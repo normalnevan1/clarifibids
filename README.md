@@ -6,9 +6,9 @@ It resolves critical tender submission blockers (such as DSC token initializatio
 
 ---
 
-## 🏛 System Architecture & Retrieval Flowchart
+## 🏛 System Architecture & Component Diagram
 
-Below is the complete architectural layout illustrating how user inquiries are authenticated, routed dynamically between Vector and Graph search, evaluated via Corrective RAG (CRAG), and synthesized:
+Below is the high-level structural and system architecture layout of ClarifiBids:
 
 ```mermaid
 flowchart TD
@@ -52,7 +52,7 @@ flowchart TD
     %% Synthesis & Knowledge Layer
     subgraph SynthesisLayer ["6. LLM Synthesis & Official Grounding"]
         PromptBuilder["Role-Constrained Prompt Construction"]
-        LLM["Groq LPU Engine (Qwen 2.5 27B / Llama 3)"]
+        LLM["Inference Engine\n(Demo: Groq Cloud LPU | Prod: Local vLLM/Ollama)"]
         CitationEngine["Official Document Page Citation Builder\n(Item #, Verified Badge, Page Reference)"]
     end
 
@@ -102,6 +102,68 @@ flowchart TD
 
 ---
 
+## 🔄 End-to-End Project Workflow Diagram
+
+The sequence below illustrates the full lifecycle of an inquiry submitted by a user through authentication, semantic routing, multi-hop traversal, corrective evaluation, and grounded citation rendering:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Bidder / User
+    participant Frontend as React 18 Frontend
+    participant API as FastAPI Backend
+    participant Classifier as Query Understanding
+    participant DB as PostgreSQL (pgvector + Graph)
+    participant Evaluator as CRAG Evaluator
+    participant LLM as Inference Engine (Groq / Local)
+    
+    User->>Frontend: Enters Question (e.g. "DSC not detected during bid submission")
+    Frontend->>API: POST /api/v1/chat/query (with JWT & Active Role)
+    
+    rect rgb(240, 248, 255)
+        Note over API,Classifier: Phase 1: Security & Intent Understanding
+        API->>API: Validate RBAC Role Permissions
+        API->>Classifier: Extract Entities (DSC, JRE) & Compute Intent Category
+        Classifier-->>API: Intent: "Technical Assistance", Depth: "Procedural", Entities: ["DSC"]
+    end
+    
+    rect rgb(255, 250, 240)
+        Note over API,DB: Phase 2: Dynamic Multi-Strategy Retrieval
+        alt Depth is "Procedural" or "Multi-source"
+            API->>DB: Graph Traversal: ISSUES -> PROCEDURES -> CONDITIONS -> CHUNKS
+            API->>DB: Dense Vector Similarity Search (BGE-Small pgvector)
+            DB-->>API: Return Combined Candidate Chunks
+        else Depth is "Direct"
+            API->>DB: Dense Vector Similarity Search (pgvector)
+            DB-->>API: Return Top-K Candidate Chunks
+        end
+    end
+    
+    rect rgb(245, 255, 245)
+        Note over API,Evaluator: Phase 3: Corrective RAG (CRAG) Verification
+        API->>Evaluator: Evaluate Candidate Chunks (Relevance & Sufficiency)
+        alt Borderline Sufficiency (0.40 <= Score < 0.70)
+            Evaluator-->>API: Action: REFINE (Missing prerequisite context)
+            API->>DB: Secondary Query Expansion with Extracted Entities
+            DB-->>API: Return Refined Chunks
+        else Sufficient Evidence (Score >= 0.70)
+            Evaluator-->>API: Action: CORRECT (Evidence grounded)
+        end
+    end
+    
+    rect rgb(255, 245, 255)
+        Note over API,LLM: Phase 4: Grounded Synthesis & Verification
+        API->>LLM: Generate Answer with Role Constraints & Exact Citations
+        LLM-->>API: Synthesized Guidance + Page Numbers
+        API->>DB: Asynchronously Audit Query, Classification & Latency
+    end
+    
+    API-->>Frontend: JSON Response (Answer, Official Citations, Page #, Confidence)
+    Frontend-->>User: Renders Answer + Official Document Reference Badge + Download Link
+```
+
+---
+
 ## ⚡ Adaptive Dynamic Retrieval: Vector RAG, Graph RAG & Corrective RAG
 
 ClarifiBids does **not** rely on a static or one-size-fits-all retrieval approach. It analyzes every query's semantic complexity and intent depth to route it dynamically across three distinct paradigms:
@@ -111,6 +173,24 @@ ClarifiBids does **not** rely on a static or one-size-fits-all retrieval approac
 | **Vector RAG** | `Direct` queries & definition inquiries | Cosine similarity over 384-dimensional dense embeddings (`BAAI/bge-small-en-v1.5`) stored in PostgreSQL `pgvector`. Fast and semantically granular. | *"What is the default date and time format in GePNIC?"*, *"What is the validity period of a DSC?"* |
 | **Graph RAG** | `Procedural` & `Multi-source` / `Multi-hop` queries | Multi-hop graph traversal across the GePNIC Domain Knowledge Graph (`GraphNode` & `GraphEdge` tables). Traverses `ISSUES` $\rightarrow$ `TRIGGERS_PROCEDURE` $\rightarrow$ `REQUIRES_PREREQUISITE` $\rightarrow$ `GOVERNED_BY_CONDITION` $\rightarrow$ `SUPPORTS_EVIDENCE` to retrieve connected operational requirements. | *"What should I do if my DSC token is not detected?"*, *"Bid opener name not visible during tender creation"*, *"How to configure Java JRE for e-Procurement?"* |
 | **Corrective RAG (CRAG)** | Continuous verification layer across **all** retrievals | Self-evaluates candidate evidence across two criteria: **Relevance** (threshold $\ge 0.65$) and **Sufficiency Coverage** (threshold $\ge 0.70$). If initial evidence is insufficient (`Action: REFINE`), it performs query expansion using extracted entities; if irrelevant, it triggers safe domain-protective fallback. | Prevents hallucinations, flags out-of-domain prompts, and refines complex technical questions. |
+
+---
+
+## 🔐 Deployment, Security & Production Readiness Roadmap
+
+### 1. Cloud-Based Model vs. Air-Gapped / On-Premises Local LLM
+- **Current Demo Setup**: For rapid testing, demonstration, and high inference speed without demanding on-prem GPU hardware, the current demonstration runs with **Groq Cloud LPU** (`qwen/qwen3.8-27b` or `llama3-70b-8192`).
+- **Production & Air-Gapped Deployment**:
+  - In sensitive sovereign government environments (e.g., NIC data centers), the cloud API can be swapped with a **locally hosted open-source LLM** (such as **Llama 3 8B/70B Instruct**, **Mistral**, or **Qwen 2.5**) deployed on an air-gapped on-premise GPU server using **vLLM**, **Ollama**, or **TGI (Text Generation Inference)**.
+  - The backend's pluggable LLM provider interface (`app/llm/`) allows changing just one environment variable (`LLM_PROVIDER=local` or `LLM_PROVIDER=vllm`) with zero frontend or pipeline code alterations, ensuring complete data residency and zero external telemetry.
+
+### 2. Enterprise Authentication: Keycloak Integration
+- **Current Setup**: Role-based access control (RBAC) with secure hashed credentials and JWT tokens stored in PostgreSQL.
+- **Production Enhancement**: The authentication gateway can be bound to **Keycloak (SSO)** via OpenID Connect (OIDC) / OAuth 2.0. This allows seamless federation with existing Indian National Informatics Centre Single Sign-On (NIC SSO / Parichay) and SAML-based enterprise identity providers.
+
+### 3. Secrets Management: HashiCorp Vault Integration
+- **Current Setup**: Environment-driven credential configuration (`.env`) guarded by strict `.gitignore` rules.
+- **Production Enhancement**: Database credentials, encryption keys, and internal service tokens can be dynamically rotated and fetched from **HashiCorp Vault** using AppRole or Kubernetes service account tokens, eliminating long-lived static secrets in server environments.
 
 ---
 
@@ -134,7 +214,7 @@ ClarifiBids does **not** rely on a static or one-size-fits-all retrieval approac
 - **Vector Database**: PostgreSQL 18 with `pgvector` extension for semantic embedding search.
 - **Knowledge Graph**: Relational Graph Schema (`graph_nodes`, `graph_edges`) modeled after GePNIC procurement ontology with multi-hop recursive traversal.
 - **LLM / Embeddings**:
-  - LLM: Groq Cloud API (`qwen/qwen3.8-27b` or `llama3-70b-8192`)
+  - LLM: Groq Cloud API (Demo) / Local vLLM (Production)
   - Embeddings: HuggingFace SentenceTransformers (`BAAI/bge-small-en-v1.5`, 384 dimensions) running locally on CPU/GPU.
 
 ---
