@@ -144,7 +144,7 @@ ClarifiBids uses **PostgreSQL 18** with `pgvector` and standard relational schem
 graph LR
     classDef auth fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a,font-size:13px;
     classDef docs fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0f172a,font-size:13px;
-    classDef graph fill:#ede9fe,stroke:#6d28d9,stroke-width:2px,color:#0f172a,font-size:13px;
+    classDef kgStyle fill:#ede9fe,stroke:#6d28d9,stroke-width:2px,color:#0f172a,font-size:13px;
     classDef audit fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#0f172a,font-size:13px;
 
     subgraph AuthGroup ["1. Identity & RBAC"]
@@ -165,9 +165,9 @@ graph LR
         DC --> EMB
     end
 
-    subgraph KnowledgeGraph ["3. GePNIC Domain Ontology"]
-        GN["graph_nodes<br/>(node_type, name)"]:::graph
-        GE["graph_edges<br/>(relationship_type, weight)"]:::graph
+    subgraph OntologyGroup ["3. GePNIC Domain Ontology"]
+        GN["graph_nodes<br/>(node_type, name)"]:::kgStyle
+        GE["graph_edges<br/>(relationship_type, weight)"]:::kgStyle
         GN -->|"source"| GE
         GE -->|"target"| GN
     end
