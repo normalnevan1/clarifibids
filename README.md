@@ -89,6 +89,7 @@ sequenceDiagram
     API->>DB: 5. Asynchronously Audit Query, Classification & Latency
     API-->>UI: Response Payload (Answer, Item #, Page #, Confidence Score)
     UI-->>User: Renders Verified Answer + Official Document Reference Badge
+```
 
 ---
 
