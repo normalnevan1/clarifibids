@@ -207,6 +207,79 @@ ClarifiBids does **not** rely on a static or one-size-fits-all retrieval approac
 
 ---
 
+## 🗄 Database Table Structure & Relational Schema
+
+ClarifiBids uses **PostgreSQL 18** with `pgvector` and standard relational schemas to support vector embeddings, multi-hop knowledge graph queries, RBAC access control, and complete CRAG audit logging:
+
+```mermaid
+erDiagram
+    users ||--o{ user_roles : "assigned"
+    roles ||--o{ user_roles : "granted_to"
+    
+    knowledge_sources ||--o{ documents : "contains"
+    documents ||--o{ document_chunks : "chunked_into"
+    document_chunks ||--|| document_embeddings : "vectorized_as"
+    
+    query_categories ||--o{ query_subcategories : "subdivides"
+    query_subcategories ||--o{ query_intents : "specifies"
+    
+    graph_nodes ||--o{ graph_edges : "source_node"
+    graph_nodes ||--o{ graph_edges : "target_node"
+    
+    users ||--o{ queries : "initiates"
+    queries ||--|| query_classifications : "classified_as"
+    queries ||--o{ retrieval_runs : "triggers"
+    retrieval_runs ||--o{ retrieved_evidence : "fetches"
+    document_chunks ||--o{ retrieved_evidence : "referenced_by"
+    retrieval_runs ||--|| evidence_evaluations : "evaluated_by"
+    queries ||--|| responses : "generates"
+    responses ||--o{ response_evidence : "cites"
+    retrieved_evidence ||--o{ response_evidence : "linked_to"
+```
+
+### Table Breakdown by Architectural Domain
+
+#### 1. Identity & RBAC Tables
+| Table Name | Primary Key | Description & Key Columns |
+| :--- | :--- | :--- |
+| `users` | `id (UUID)` | Authenticated portal accounts: `username`, `email`, `password_hash`, `is_active`, `created_at`. |
+| `roles` | `id (SERIAL)` | Standard roles: `name` (`Bidder`, `Foreign Bidder`, `Department User`, `ADMIN`), `is_business_role`, `description`. |
+| `user_roles` | `(user_id, role_id)` | Composite key junction enforcing user-to-role binding. |
+
+#### 2. Vector Store & Knowledge Chunk Tables
+| Table Name | Primary Key | Description & Key Columns |
+| :--- | :--- | :--- |
+| `knowledge_sources` | `id (SERIAL)` | Source metadata: `source_name`, `source_type` (`FAQ`, `MANUAL`), `location`, `version`. |
+| `documents` | `id (UUID)` | Document-level tracking: `source_id (FK)`, `title`, `document_type`, `file_name`, `checksum`. |
+| `document_chunks` | `id (UUID)` | Partitioned textual chunks: `document_id (FK)`, `chunk_index`, `content`, `question`, `answer`, `page_number`, `token_count`, `metadata (JSONB)` (e.g. `user_role`). |
+| `document_embeddings`| `id (UUID)` | 384-dimensional vector store: `chunk_id (FK, UNIQUE)`, `embedding (ARRAY/Vector(384))`, `embedding_model` (`BAAI/bge-small-en-v1.5`). |
+
+#### 3. Procurement Taxonomy & Classification
+| Table Name | Primary Key | Description & Key Columns |
+| :--- | :--- | :--- |
+| `query_categories` | `id (SERIAL)` | Top-level procurement domains: `name` (e.g., *Technical Assistance*, *Security Information*). |
+| `query_subcategories`| `id (SERIAL)` | Nested category divisions: `category_id (FK)`, `name` (e.g., *Digital Signature*, *Client System Prerequisites*). |
+| `query_intents` | `id (SERIAL)` | Granular operational intent: `subcategory_id (FK)`, `name` (e.g., *DSC Verification & Detection*). |
+
+#### 4. Knowledge Graph Ontology Tables
+| Table Name | Primary Key | Description & Key Columns |
+| :--- | :--- | :--- |
+| `graph_nodes` | `id (UUID)` | Entities and concepts: `node_type` (`ISSUE`, `PROCEDURE`, `CONDITION`, `RULE`, `CHUNK`), `name`, `description`, `metadata (JSONB)`. |
+| `graph_edges` | `id (UUID)` | Directed semantic relationships: `source_node_id (FK)`, `target_node_id (FK)`, `relationship_type` (`TRIGGERS_PROCEDURE`, `REQUIRES_PREREQUISITE`, `GOVERNED_BY_CONDITION`, `SUPPORTS_EVIDENCE`), `weight`. |
+
+#### 5. CRAG Execution & Interaction Audit Tables
+| Table Name | Primary Key | Description & Key Columns |
+| :--- | :--- | :--- |
+| `queries` | `id (UUID)` | Audit trail of all queries: `user_id (FK)`, `session_id`, `query_text`, `user_role`, `created_at`. |
+| `query_classifications`| `id (UUID)` | Query understanding metadata: `query_id (FK)`, `category_id (FK)`, `depth_level` (`Direct`, `Procedural`, `Multi-source`), `confidence_score`, `entities (JSONB)`. |
+| `retrieval_runs` | `id (UUID)` | Retrieval execution passes: `query_id (FK)`, `strategy` (`VECTOR_RAG`, `GRAPH_RAG`), `attempt_number`, `latency_ms`. |
+| `retrieved_evidence` | `id (UUID)` | Evidence scoring: `retrieval_run_id (FK)`, `chunk_id (FK)`, `similarity_score`, `rank`, `is_selected`. |
+| `evidence_evaluations` | `id (UUID)` | Evaluator metrics: `retrieval_run_id (FK)`, `is_relevant`, `is_sufficient`, `coverage_score`, `action_taken` (`CORRECT`, `REFINE`, `ACCESS_DENIED`), `reason`. |
+| `responses` | `id (UUID)` | Synthesized response text: `query_id (FK)`, `retrieval_run_id (FK)`, `response_text`, `model_name`, `provider`, `latency_ms`. |
+| `response_evidence` | `id (UUID)` | Grounding links connecting final response to specific evidence items. |
+
+---
+
 ## 🏗 Technology Stack
 
 - **Frontend**: React 18, TypeScript, Vite, Lucide Icons, Vanilla CSS (NIC/GePNIC National Portal Design System).
