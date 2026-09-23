@@ -155,48 +155,26 @@ ClarifiBids uses **PostgreSQL 18** with `pgvector` and standard relational schem
 
 ```mermaid
 flowchart TD
-    classDef auth fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a;
-    classDef docs fill:#dbeafe,stroke:#0284c7,stroke-width:2px,color:#0f172a;
-    classDef kg fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#0f172a;
-    classDef audit fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#0f172a;
+    classDef auth fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a,font-size:15px;
+    classDef docs fill:#dbeafe,stroke:#0284c7,stroke-width:2px,color:#0f172a,font-size:15px;
+    classDef kg fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#0f172a,font-size:15px;
+    classDef audit fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#0f172a,font-size:15px;
 
-    subgraph Auth ["1. Identity & Role-Based Access Control"]
-        U["👤 users (id, username, password_hash)"]:::auth
-        R["🏷️ roles (id, name, is_business_role)"]:::auth
-        UR["🔗 user_roles (user_id, role_id)"]:::auth
-        U --- UR
-        R --- UR
-    end
+    %% Tier 1: Identity
+    AUTH_BOX["🔐 1. Identity & RBAC Domain<br/><b>users</b> (id, username, password_hash)<br/>↕ <i>assigned via</i><br/><b>user_roles</b> ↔ <b>roles</b> (Bidder, Foreign Bidder, Department User)"]:::auth
 
-    subgraph Knowledge ["2. Knowledge Base & 384-dim Vector Store"]
-        DOC["📄 documents (title, file_name, checksum)"]:::docs
-        DC["📑 document_chunks (question, answer, page_number)"]:::docs
-        EMB["🔢 document_embeddings (vector 384-dim BGE-Small)"]:::docs
-        DOC --> DC
-        DC --> EMB
-    end
+    %% Tier 2: Knowledge Base
+    DOC_BOX["📚 2. Knowledge Base & Vector Store<br/><b>knowledge_sources</b> ➔ <b>documents</b> (FAQ.docx)<br/>↓ <i>chunked into</i><br/><b>document_chunks</b> (question, answer, page_number)<br/>↓ <i>embedded into</i><br/><b>document_embeddings</b> (384-dim BGE-Small Vector)"]:::docs
 
-    subgraph Ontology ["3. GePNIC Multi-Hop Domain Knowledge Graph"]
-        GN["🟣 graph_nodes (node_type: ISSUE, PROCEDURE, CONDITION, RULE)"]:::kg
-        GE["🔄 graph_edges (relationship: TRIGGERS, REQUIRES, GOVERNED_BY)"]:::kg
-        GN <--> GE
-    end
+    %% Tier 3: Domain Ontology
+    KG_BOX["🕸️ 3. GePNIC Multi-Hop Domain Ontology Graph<br/><b>graph_nodes</b> (ISSUE, PROCEDURE, CONDITION, RULE)<br/>↕ <i>interconnected via</i><br/><b>graph_edges</b> (TRIGGERS_PROCEDURE, REQUIRES_PREREQUISITE, GOVERNED_BY)"]:::kg
 
-    subgraph Audit ["4. CRAG Execution & Interaction Audit Logs"]
-        Q["❓ queries (query_text, user_role, session_id)"]:::audit
-        QC["🎯 query_classifications (category, depth_level, entities)"]:::audit
-        RR["⚡ retrieval_runs (strategy: VECTOR_RAG / GRAPH_RAG)"]:::audit
-        EE["⚖️ evidence_evaluations (relevance, sufficiency, action)"]:::audit
-        RESP["💬 responses (grounded response_text, latency_ms)"]:::audit
-        Q --> QC
-        Q --> RR
-        RR --> EE
-        Q --> RESP
-    end
+    %% Tier 4: CRAG & Audit Trail
+    AUDIT_BOX["⚖️ 4. Corrective RAG (CRAG) & Execution Audit Trail<br/><b>queries</b> (query_text, user_role, session_id)<br/>↓<br/><b>query_classifications</b> (intent category, depth_level, extracted entities)<br/>↓<br/><b>retrieval_runs</b> (VECTOR_RAG / GRAPH_RAG) ↔ <b>retrieved_evidence</b><br/>↓<br/><b>evidence_evaluations</b> (relevance, sufficiency >= 0.70, action: CORRECT/REFINE)<br/>↓<br/><b>responses</b> (synthesized answer, latency_ms) ↔ <b>response_evidence</b>"]:::audit
 
-    U -.->|"initiates"| Q
-    DC -.->|"retrieved for"| RR
-    GN -.->|"linked to"| DC
+    AUTH_BOX -->|"initiates search"| AUDIT_BOX
+    DOC_BOX -->|"supplies vector evidence"| AUDIT_BOX
+    KG_BOX -->|"supplies procedural paths"| AUDIT_BOX
 ```
 
 ### Table Breakdown by Architectural Domain
