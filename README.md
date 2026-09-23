@@ -11,84 +11,97 @@ It resolves critical tender submission blockers (such as DSC token initializatio
 Below is the modular architectural layout of ClarifiBids showing data flow across the 5 primary tiers:
 
 ```mermaid
-graph TD
-    classDef client fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0f172a,font-size:14px;
-    classDef security fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a,font-size:14px;
-    classDef engine fill:#ede9fe,stroke:#6d28d9,stroke-width:2px,color:#0f172a,font-size:14px;
-    classDef crag fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#0f172a,font-size:14px;
-    classDef db fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a,font-size:14px;
+flowchart TD
+    classDef client fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#0f172a;
+    classDef security fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#0f172a;
+    classDef retrieval fill:#ede9fe,stroke:#6d28d9,stroke-width:2px,color:#0f172a;
+    classDef crag fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#0f172a;
+    classDef storage fill:#f1f5f9,stroke:#334155,stroke-width:2px,color:#0f172a;
 
-    UI["💻 React 18 UI<br/>(National NIC/GePNIC Portal)"]:::client
-    API["🛡️ FastAPI Gateway<br/>(JWT + RBAC Policy Guard)"]:::security
-    CL["🧠 Query Understanding<br/>(Category Centroids + Entity Rules)"]:::engine
-
-    subgraph DynamicRetrieval ["Adaptive Dynamic Retrieval Engine"]
-        VR["🔍 Vector RAG<br/>(Dense pgvector Search)"]:::engine
-        GR["🕸️ Graph RAG<br/>(Multi-Hop Ontology Traversal)"]:::engine
-        Fuse["⚡ Fusion & Deduplication"]:::engine
+    subgraph Client ["Client Layer"]
+        UI["🖥️ React 18 GePNIC Portal"]:::client
     end
 
-    CRAG{"⚖️ CRAG Evaluator<br/>(Relevance & Sufficiency)"}:::crag
-    SYNTH["🤖 LLM Synthesis<br/>(Groq LPU / Local vLLM)"]:::crag
-    POSTGRES[("🗄️ PostgreSQL 18<br/>pgvector + Knowledge Graph + Audit Logs")]:::db
+    subgraph Gateway ["API & Security Gateway"]
+        API["🛡️ FastAPI (JWT Auth + RBAC Guard)"]:::security
+    end
 
-    UI -->|"1. User Query + JWT Role"| API
-    API -->|"2. Authenticated Scope"| CL
+    subgraph Classification ["Query Understanding Engine"]
+        CL["🧠 Intent & Depth Routing"]:::retrieval
+    end
+
+    subgraph Engine ["Adaptive Dynamic Retrieval"]
+        VR["🔍 Vector RAG (pgvector Dense Search)"]:::retrieval
+        GR["🕸️ Graph RAG (Ontology Multi-Hop)"]:::retrieval
+    end
+
+    subgraph Evaluation ["Corrective RAG (CRAG) & Generation"]
+        CRAG{"⚖️ CRAG Evaluator<br/>Relevance >= 0.65<br/>Sufficiency >= 0.70"}:::crag
+        LLM["🤖 LLM Synthesis (Groq / Local vLLM)"]:::crag
+    end
+
+    subgraph Storage ["PostgreSQL 18 Knowledge Base"]
+        DB[("🗄️ Vector Store + Knowledge Graph + Audit Logs")]:::storage
+    end
+
+    UI -->|"1. User Query & Role"| API
+    API -->|"2. Verify RBAC"| CL
     CL -->|"Direct Query"| VR
     CL -->|"Procedural / Multi-Hop"| GR
-    VR <-->|"Cosine Similarity"| POSTGRES
-    GR <-->|"Node & Edge Traversal"| POSTGRES
-    VR --> Fuse
-    GR --> Fuse
-    Fuse -->|"Candidate Chunks"| CRAG
-    CRAG -->|"Sufficiency >= 0.70"| SYNTH
-    CRAG -.->|"Sufficiency < 0.70 (Refine Query)"| VR
-    SYNTH -->|"Verified Guidance + Page Citations"| UI
-    API -.->|"Audit Logs & Metrics"| POSTGRES
+    VR <-->|"Cosine Search"| DB
+    GR <-->|"Graph Traversal"| DB
+    VR --> CRAG
+    GR --> CRAG
+    CRAG -->|"Sufficient"| LLM
+    CRAG -.->|"Refine Pass"| VR
+    LLM -->|"Verified Answer + Page Citation"| UI
+    API -.->|"Audit Trail"| DB
 ```
 
 ---
 
 ## 🔄 End-to-End Project Workflow
 
-The sequence below illustrates the exact request-response lifecycle from query submission to verified page citation rendering:
+The step-by-step pipeline below illustrates the execution lifecycle for an inquiry from submission to official page citation:
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User as 👤 User / Bidder
-    participant UI as 💻 React 18 Portal
-    participant API as 🛡️ FastAPI Gateway
-    participant Engine as ⚙️ Dynamic Retrieval & CRAG
-    participant DB as 🗄️ PostgreSQL 18
-    participant LLM as 🤖 Inference LLM
+flowchart TD
+    classDef step fill:#f8fafc,stroke:#0284c7,stroke-width:2px,color:#0f172a;
+    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a;
+    classDef success fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#0f172a;
+
+    S1["1️⃣ User Enters Inquiry on React Portal<br/>(e.g., 'DSC token not detected during bid submission')"]:::step
+    S2["2️⃣ FastAPI Validates Bearer JWT & Role Permissions<br/>(Bidder / Foreign Bidder / Department User)"]:::step
+    S3["3️⃣ Query Understanding Engine Classifies Intent<br/>Extracts Entities (DSC, JRE) & Determines Depth Level"]:::step
     
-    User->>UI: Enters query (e.g. "DSC not detected during bid submission")
-    UI->>API: POST /api/v1/chat/query (with Bearer Token & Role)
+    D1{"4️⃣ Depth Decision"}:::decision
     
-    API->>API: 1. Validate Role-Based Access Control (RBAC)
-    API->>Engine: 2. Analyze Intent, Entities & Depth Level
+    R1["🔍 Vector RAG: Dense Cosine Similarity Search<br/>(BAAI/bge-small-en-v1.5 via pgvector)"]:::step
+    R2["🕸️ Graph RAG: Multi-Hop Knowledge Traversal<br/>(Issues ➔ Procedures ➔ Conditions ➔ Chunks)"]:::step
     
-    alt Procedural or Multi-hop Query
-        Engine->>DB: Graph Traversal (Issues ➔ Procedures ➔ Conditions ➔ Chunks)
-        Engine->>DB: Dense Vector Search (BGE-Small pgvector)
-        DB-->>Engine: Candidate Evidence Chunks
-    else Direct Definition Query
-        Engine->>DB: Dense Vector Search (pgvector)
-        DB-->>Engine: Top-K Vector Chunks
-    end
+    S4["5️⃣ Merge & Deduplicate Retrieved Candidate Evidence Chunks"]:::step
     
-    Engine->>Engine: 3. Corrective RAG (CRAG) Sufficiency Evaluation
-    opt Borderline Coverage (0.40 <= Score < 0.70)
-        Engine->>DB: Query Expansion using Extracted Entities
-        DB-->>Engine: Refined Evidence
-    end
+    D2{"6️⃣ CRAG Sufficiency Evaluation<br/>(Relevance >= 0.65 & Sufficiency >= 0.70)"}:::decision
     
-    Engine->>LLM: 4. Build Role-Constrained Prompt with Evidence
-    LLM-->>API: Synthesized Guidance with Source Item & Page Numbers
-    API->>DB: 5. Asynchronously Audit Query, Classification & Latency
-    API-->>UI: Response Payload (Answer, Item #, Page #, Confidence Score)
-    UI-->>User: Renders Verified Answer + Official Document Reference Badge
+    REF["🔄 Secondary Query Expansion<br/>(Re-query with Extracted Domain Entities)"]:::step
+    
+    S5["7️⃣ Role-Constrained Prompt Construction with Official Grounding Context"]:::step
+    S6["8️⃣ LLM Generates Response with GePNIC Manual Item # and Page Reference"]:::step
+    S7["9️⃣ Asynchronous Audit Log Written to PostgreSQL & Response Displayed to User"]:::success
+
+    S1 --> S2
+    S2 --> S3
+    S3 --> D1
+    D1 -->|"Direct / Definition"| R1
+    D1 -->|"Procedural / Multi-Hop"| R2
+    R1 --> S4
+    R2 --> S4
+    S4 --> D2
+    D2 -->|"Score >= 0.70"| S5
+    D2 -->|"0.40 <= Score < 0.70"| REF
+    REF --> S4
+    S5 --> S6
+    S6 --> S7
 ```
 
 ---
@@ -141,44 +154,40 @@ ClarifiBids does **not** rely on a static or one-size-fits-all retrieval approac
 ClarifiBids uses **PostgreSQL 18** with `pgvector` and standard relational schemas to support vector embeddings, multi-hop knowledge graph queries, RBAC access control, and complete CRAG audit logging:
 
 ```mermaid
-graph LR
-    classDef auth fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a,font-size:13px;
-    classDef docs fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0f172a,font-size:13px;
-    classDef kgStyle fill:#ede9fe,stroke:#6d28d9,stroke-width:2px,color:#0f172a,font-size:13px;
-    classDef audit fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#0f172a,font-size:13px;
+flowchart TD
+    classDef auth fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#0f172a;
+    classDef docs fill:#dbeafe,stroke:#0284c7,stroke-width:2px,color:#0f172a;
+    classDef kg fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#0f172a;
+    classDef audit fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#0f172a;
 
-    subgraph AuthGroup ["1. Identity & RBAC"]
-        U["users<br/>(id, username, password_hash)"]:::auth
-        R["roles<br/>(id, name, is_business_role)"]:::auth
-        UR["user_roles<br/>(user_id, role_id)"]:::auth
+    subgraph Auth ["1. Identity & Role-Based Access Control"]
+        U["👤 users (id, username, password_hash)"]:::auth
+        R["🏷️ roles (id, name, is_business_role)"]:::auth
+        UR["🔗 user_roles (user_id, role_id)"]:::auth
         U --- UR
         R --- UR
     end
 
-    subgraph DocGroup ["2. Knowledge Base & Vector Store"]
-        KS["knowledge_sources"]:::docs
-        DOC["documents<br/>(title, checksum)"]:::docs
-        DC["document_chunks<br/>(question, answer, page_no)"]:::docs
-        EMB["document_embeddings<br/>(vector 384-dim)"]:::docs
-        KS --> DOC
+    subgraph Knowledge ["2. Knowledge Base & 384-dim Vector Store"]
+        DOC["📄 documents (title, file_name, checksum)"]:::docs
+        DC["📑 document_chunks (question, answer, page_number)"]:::docs
+        EMB["🔢 document_embeddings (vector 384-dim BGE-Small)"]:::docs
         DOC --> DC
         DC --> EMB
     end
 
-    subgraph OntologyGroup ["3. GePNIC Domain Ontology"]
-        GN["graph_nodes<br/>(node_type, name)"]:::kgStyle
-        GE["graph_edges<br/>(relationship_type, weight)"]:::kgStyle
-        GN -->|"source"| GE
-        GE -->|"target"| GN
+    subgraph Ontology ["3. GePNIC Multi-Hop Domain Knowledge Graph"]
+        GN["🟣 graph_nodes (node_type: ISSUE, PROCEDURE, CONDITION, RULE)"]:::kg
+        GE["🔄 graph_edges (relationship: TRIGGERS, REQUIRES, GOVERNED_BY)"]:::kg
+        GN <--> GE
     end
 
-    subgraph AuditGroup ["4. CRAG & Execution Audit Trail"]
-        Q["queries<br/>(query_text, user_role)"]:::audit
-        QC["query_classifications<br/>(category, depth_level)"]:::audit
-        RR["retrieval_runs<br/>(strategy, latency_ms)"]:::audit
-        EE["evidence_evaluations<br/>(action_taken, coverage_score)"]:::audit
-        RESP["responses<br/>(response_text, model_name)"]:::audit
-        
+    subgraph Audit ["4. CRAG Execution & Interaction Audit Logs"]
+        Q["❓ queries (query_text, user_role, session_id)"]:::audit
+        QC["🎯 query_classifications (category, depth_level, entities)"]:::audit
+        RR["⚡ retrieval_runs (strategy: VECTOR_RAG / GRAPH_RAG)"]:::audit
+        EE["⚖️ evidence_evaluations (relevance, sufficiency, action)"]:::audit
+        RESP["💬 responses (grounded response_text, latency_ms)"]:::audit
         Q --> QC
         Q --> RR
         RR --> EE
@@ -186,7 +195,8 @@ graph LR
     end
 
     U -.->|"initiates"| Q
-    DC -.->|"retrieved into"| RR
+    DC -.->|"retrieved for"| RR
+    GN -.->|"linked to"| DC
 ```
 
 ### Table Breakdown by Architectural Domain
