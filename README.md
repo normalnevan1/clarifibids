@@ -218,17 +218,20 @@ flowchart TD
 | `responses` | `id (UUID)` | Synthesized response text: `query_id (FK)`, `retrieval_run_id (FK)`, `response_text`, `model_name`, `provider`, `latency_ms`. |
 | `response_evidence` | `id (UUID)` | Grounding links connecting final response to specific evidence items. |
 
----
-
 ## 🏗 Technology Stack
 
-- **Frontend**: React 18, TypeScript, Vite, Lucide Icons, Vanilla CSS (NIC/GePNIC National Portal Design System).
-- **Backend API**: Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy (Asyncpg + Psycopg).
-- **Vector Database**: PostgreSQL 18 with `pgvector` extension for semantic embedding search.
-- **Knowledge Graph**: Relational Graph Schema (`graph_nodes`, `graph_edges`) modeled after GePNIC procurement ontology with multi-hop recursive traversal.
-- **LLM / Embeddings**:
-  - LLM: Groq Cloud API (Demo) / Local vLLM (Production)
-  - Embeddings: HuggingFace SentenceTransformers (`BAAI/bge-small-en-v1.5`, 384 dimensions) running locally on CPU/GPU.
+ClarifiBids is engineered using a resilient enterprise stack spanning modern frontend frameworks, asynchronous Python services, native vector databases, and high-performance inference engines:
+
+| Layer | Technology | Version / Spec | Purpose & Architectural Role |
+| :--- | :--- | :--- | :--- |
+| **Frontend UI** | **React 18 & TypeScript** | React 18, Vite, Lucide Icons | National NIC/GePNIC design system, tricolor branding, role switching, official citation badges & offline document download. |
+| **Styling** | **Vanilla CSS** | Modern CSS Variables & Flex/Grid | High-fidelity government theme, zero-bloat styling, accessible contrast. |
+| **Backend API** | **FastAPI** | Python 3.11+, Pydantic v2 | High-concurrency async REST API, RBAC policy enforcement, audit logging. |
+| **Database & Vector** | **PostgreSQL 18 + `pgvector`** | PostgreSQL 18.x, pgvector 0.8+ | Unified storage for relational models, 384-dimensional dense vector embeddings, and audit trails. |
+| **Knowledge Graph** | **Relational Graph Schema** | SQLAlchemy (Asyncpg + Psycopg) | Multi-hop ontological traversal across `ISSUES`, `PROCEDURES`, `CONDITIONS`, and `CHUNKS`. |
+| **Embeddings** | **SentenceTransformers** | `BAAI/bge-small-en-v1.5` | 384-dim dense semantic embeddings computed locally on CPU/GPU. |
+| **LLM Inference** | **Groq LPU / Local vLLM** | Qwen 2.5 27B / Llama 3 | Demo: Sub-second Groq cloud inference. Prod: Air-gapped on-premise local LLM. |
+| **Auth & Security** | **JWT & RBAC** | PyJWT / Passlib (Bcrypt) | Secure hashed credentials, token session isolation, and role authorization. |
 
 ---
 
