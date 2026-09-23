@@ -1,0 +1,2556 @@
+You are the lead software architect and senior full-stack/AI engineer responsible for planning the complete implementation of a dissertation project called:
+
+CLARIFIBIDS: A FRAMEWORK FOR INTELLIGENT BIDDER ASSISTANCE
+
+Subtitle:
+An Intelligent Assistance Layer over the GePNIC eProcurement Portal
+
+IMPORTANT:
+Do NOT start coding yet.
+
+Your first task is to produce a COMPLETE, DETAILED, END-TO-END IMPLEMENTATION PLAN for this project.
+
+The plan must be implementation-ready and detailed enough that another developer can follow it step by step in Cursor without having to redesign the architecture.
+
+Before producing the plan:
+
+1. Inspect the entire existing repository/workspace.
+2. Identify the current project structure, files, dependencies, configuration, database setup, frontend setup, backend setup, and anything already implemented.
+3. Do not unnecessarily replace working code.
+4. Reuse existing code where appropriate.
+5. Identify gaps between the current repository and the target architecture below.
+6. Treat the project specification below as the authoritative dissertation scope.
+7. If you find conflicts between the existing repository and this specification, explicitly identify them and recommend how to resolve them.
+8. Do not silently remove, simplify, or replace any dissertation requirement.
+9. Clearly distinguish:
+   - already implemented
+   - required now
+   - required later
+   - optional enhancement
+10. Do not generate implementation code yet. Produce the implementation plan first.
+
+============================================================
+1. PROJECT OBJECTIVE
+============================================================
+
+ClarifiBids is an intelligent assistance layer over the existing GePNIC eProcurement portal.
+
+The system must NOT modify or replace GePNIC's core procurement workflow or transaction processing.
+
+ClarifiBids should help users understand GePNIC-related information through:
+
+- context-aware query understanding
+- query categorisation
+- user-role awareness
+- intent recognition
+- required-context/evidence identification
+- knowledge retrieval
+- baseline Vector RAG
+- Graph RAG for procedural/context-dependent/multi-hop queries
+- evidence relevance evaluation
+- evidence sufficiency evaluation
+- corrective retrieval
+- evidence-grounded response generation
+- source attribution
+- evaluation and benchmarking
+
+The system should be designed as a research prototype that can progressively evolve from an FAQ-only MVP into the full dissertation architecture.
+
+============================================================
+2. CURRENT DEVELOPMENT STRATEGY
+============================================================
+
+The implementation will be incremental.
+
+INITIAL VERSION:
+
+Use only the provided FAQ knowledge source.
+
+The initial pipeline should be:
+
+FAQ document
+    ↓
+Document ingestion
+    ↓
+Parsing
+    ↓
+Cleaning
+    ↓
+Q&A extraction / chunking
+    ↓
+Metadata extraction
+    ↓
+Embedding generation
+    ↓
+PostgreSQL + pgvector
+    ↓
+Query understanding
+    ↓
+Query categorisation
+    ↓
+Retrieval strategy selection
+    ↓
+Vector retrieval
+    ↓
+Evidence relevance/sufficiency evaluation
+    ↓
+Corrective retrieval if required
+    ↓
+Groq LLM
+    ↓
+Evidence-grounded response
+    ↓
+Source attribution
+
+IMPORTANT:
+
+Do NOT fine-tune/train the LLM on the FAQ document.
+
+This project uses Retrieval-Augmented Generation.
+
+The FAQ is knowledge data that must be ingested, indexed, retrieved, and supplied as evidence to the LLM.
+
+Later, additional knowledge sources will be added without redesigning the core architecture.
+
+Future knowledge sources include:
+
+- historical bid clarifications
+- Support Knowledge Base
+- portal documentation
+- procedural documentation
+- policies
+- guidelines
+- eligibility/rules
+- other relevant GePNIC documentation
+
+============================================================
+3. LLM STRATEGY
+============================================================
+
+For the current development phase, use GROQ CLOUD as the LLM provider.
+
+Later, the LLM must be replaceable with:
+
+Ollama
++
+Qwen2.5 1.5B
+
+The architecture must therefore NEVER hard-code Groq-specific logic throughout the application.
+
+Create a provider-independent LLM abstraction.
+
+Conceptually:
+
+LLMService
+    ├── GroqProvider
+    └── OllamaProvider
+
+Configuration should control the provider and model.
+
+Example concept:
+
+LLM_PROVIDER=groq
+LLM_MODEL=<current supported Groq model>
+
+Later:
+
+LLM_PROVIDER=ollama
+LLM_MODEL=qwen2.5:1.5b
+
+The implementation plan must explain:
+
+- provider abstraction
+- configuration
+- API client
+- timeout handling
+- retries
+- error handling
+- streaming support
+- token limits
+- temperature
+- prompt management
+- logging
+- provider switching
+- local Ollama migration
+
+Do not lock the application architecture to Groq.
+
+Also explain how the system can later operate CPU-only with Ollama on a laptop with:
+
+- Intel i3
+- 8 GB RAM
+- integrated Intel UHD graphics
+- no discrete GPU
+
+The design must avoid unnecessary resource-heavy components.
+
+============================================================
+4. TARGET TECHNICAL STACK
+============================================================
+
+Use the project's specified technology stack as the baseline.
+
+FRONTEND:
+
+- React 18
+- TypeScript
+- Vite
+- Lucide Icons
+- Vanilla CSS
+
+BACKEND:
+
+- Python 3.11+
+- FastAPI
+- Uvicorn
+- Pydantic v2
+- SQLAlchemy
+- Alembic
+
+AI / RAG:
+
+- LangGraph
+- LlamaIndex Core
+- Groq initially
+- Ollama + Qwen2.5 1.5B later
+- SentenceTransformers
+- BAAI/bge-small-en-v1.5
+- 384-dimensional embeddings
+
+DATABASE:
+
+- PostgreSQL 15+
+- pgvector
+
+DOCUMENT PROCESSING:
+
+- PyMuPDF
+- PaddleOCR where OCR is required
+
+AUTHENTICATION / SECURITY:
+
+- HashiCorp Vault
+- Keycloak OIDC
+- JWT / PyJWT
+
+EXTERNAL SEARCH:
+
+- DuckDuckGo Search API
+
+IMPORTANT:
+
+Do not introduce Neo4j, Milvus, Pinecone, Redis, Elasticsearch, MongoDB, etc. unless the implementation plan provides a strong technical reason.
+
+The dissertation architecture diagram may use examples such as Pinecone/Milvus and Neo4j, but the project's stated technical stack uses PostgreSQL + pgvector.
+
+Prefer PostgreSQL as the central persistence layer.
+
+For the initial Graph RAG implementation, evaluate using PostgreSQL graph tables / relational graph representation before introducing a separate graph database.
+
+If you believe a separate graph database is necessary later, identify it as a future architectural decision rather than silently adding it now.
+
+============================================================
+5. CORE SYSTEM ARCHITECTURE
+============================================================
+
+The target conceptual architecture is:
+
+USER
+  ↓
+QUERY INPUT
+  ↓
+QUERY UNDERSTANDING & CATEGORISATION
+  ↓
+CATEGORY
+  ↓
+SUBCATEGORY
+  ↓
+INTENT
+  ↓
+REQUIRED CONTEXT / EVIDENCE
+  ↓
+RETRIEVAL STRATEGY SELECTION
+  ↓
+ ┌───────────────────────────────┐
+ │                               │
+ ▼                               ▼
+BASELINE VECTOR RAG          GRAPH RAG
+ │                               │
+ ▼                               ▼
+CANDIDATE EVIDENCE RETRIEVAL
+ │                               │
+ └───────────────┬───────────────┘
+                 ↓
+EVIDENCE RELEVANCE & SUFFICIENCY EVALUATION
+                 ↓
+        ┌────────┴────────┐
+        │                 │
+   SUFFICIENT        INSUFFICIENT
+        │                 │
+        │                 ▼
+        │          CORRECTIVE RETRIEVAL
+        │                 │
+        └────────┬────────┘
+                 ↓
+        EVIDENCE-CHECKED CONTEXT
+                 ↓
+        LLM RESPONSE GENERATION
+                 ↓
+CONTEXT-AWARE, EVIDENCE-SUPPORTED RESPONSE
+
+The implementation plan must map every stage to:
+
+- frontend responsibility
+- backend responsibility
+- service/module
+- database tables
+- API endpoint
+- request schema
+- response schema
+- logging
+- tests
+
+============================================================
+6. QUERY UNDERSTANDING
+============================================================
+
+Every user query should conceptually be processed into:
+
+- query text
+- user role
+- category
+- subcategory
+- intent
+- query depth
+- required context
+- required evidence
+- extracted entities
+- confidence
+
+The dissertation uses:
+
+Category
+    ↓
+Subcategory
+    ↓
+Intent
+    ↓
+Required Context / Evidence
+
+The system should support entity extraction and entity recognition.
+
+Example from the project:
+
+User query:
+
+"My DSC is not detected while submitting the bid. What should I do?"
+
+Expected conceptual classification:
+
+Category:
+Technical Assistance
+
+Subcategory:
+DSC
+
+Intent:
+DSC Detection Issue
+
+Context:
+Bid Submission
+
+Required evidence:
+Applicable technical procedure/guideline
+
+The plan must explain how this classification is implemented.
+
+IMPORTANT:
+
+For the initial MVP, do NOT unnecessarily use an LLM for every classification task.
+
+Evaluate lightweight methods such as:
+
+- rule-based classification
+- keyword/phrase matching
+- metadata matching
+- lightweight classifier
+- embedding similarity
+
+The plan may later introduce LLM-assisted classification where justified.
+
+============================================================
+7. SIX REQUIRED QUERY CATEGORIES
+============================================================
+
+The system must support these six categories:
+
+1. Portal Guidelines & Procurement Terms
+
+2. Portal Usage & User Management
+
+3. Technical Assistance
+
+4. Tender & Bid Information
+
+5. Security Information
+
+6. Foreign Bidder Information
+
+These must exist as real application/database concepts, not merely frontend labels.
+
+The implementation plan must define:
+
+- category table
+- subcategory table
+- intent table
+- relationships
+- seed data
+- API representation
+- frontend representation
+
+============================================================
+8. USER ROLES
+============================================================
+
+The system must support:
+
+1. Bidder
+2. Foreign Bidder
+3. Department User
+
+User role must influence:
+
+- query understanding
+- retrieval
+- metadata filtering
+- context
+- response generation
+- evaluation
+
+The implementation plan must explain how role information is obtained:
+
+- authenticated user profile
+- selected role
+- session context
+- or other appropriate mechanism
+
+Do not infer sensitive user information.
+
+============================================================
+9. QUERY DEPTH
+============================================================
+
+The system must explicitly support:
+
+1. Direct
+2. Procedural
+3. Context-dependent
+4. Multi-source / Multi-hop
+
+The retrieval router should use query depth and query characteristics.
+
+Target strategy:
+
+Direct
+    → Baseline Vector RAG
+
+Procedural
+    → Vector RAG and/or Graph RAG
+
+Context-dependent
+    → Context-aware retrieval
+
+Multi-source / Multi-hop
+    → Graph RAG
+
+Insufficient evidence
+    → Corrective retrieval
+
+Do not force Graph RAG on every query.
+
+The implementation plan must explain the routing logic.
+
+============================================================
+10. INITIAL FAQ KNOWLEDGE SOURCE
+============================================================
+
+The initial knowledge base is the provided GePNIC FAQ document.
+
+Treat the FAQ as structured question-answer knowledge rather than blindly splitting it into arbitrary token chunks.
+
+Where possible, preserve:
+
+- question
+- answer
+- source document
+- page number
+- FAQ identifier if available
+- category
+- subcategory
+- intent
+- user role
+- relevant procedure
+- applicable context
+- metadata
+
+A complete FAQ item should ideally remain a coherent retrieval unit.
+
+The plan must explain:
+
+- DOCX parsing
+- question/answer extraction
+- document cleaning
+- duplicate handling
+- chunking
+- metadata extraction
+- category assignment
+- intent assignment
+- embedding generation
+- vector indexing
+- re-ingestion
+- idempotency
+- document versioning
+- checksums
+- source tracking
+
+The ingestion process must be designed so that future documents can be added through the same general pipeline.
+
+============================================================
+11. KNOWLEDGE SOURCE MODEL
+============================================================
+
+Create a generalized knowledge-source architecture.
+
+Conceptually:
+
+KnowledgeSource
+    ↓
+Document
+    ↓
+DocumentChunk
+    ↓
+Embedding
+
+Future sources:
+
+- FAQ
+- Support Knowledge Base
+- Historical clarification queries
+- Portal documentation
+- Procedural documents
+- Policies
+- Guidelines
+- Eligibility rules
+- Other relevant documents
+
+Do not create an FAQ-specific database architecture that would require redesign later.
+
+============================================================
+12. DOCUMENT INGESTION PIPELINE
+============================================================
+
+Plan a reusable ingestion pipeline:
+
+Source
+  ↓
+File discovery
+  ↓
+Document identification
+  ↓
+Parsing
+  ↓
+Cleaning
+  ↓
+Structure detection
+  ↓
+Q&A / section extraction
+  ↓
+Chunking
+  ↓
+Metadata extraction
+  ↓
+Deduplication
+  ↓
+Embedding
+  ↓
+Vector indexing
+  ↓
+Graph entity/relationship extraction where applicable
+  ↓
+Validation
+  ↓
+Ready
+
+For PDFs:
+
+PyMuPDF
+
+For scanned documents:
+
+PaddleOCR
+
+For DOCX:
+
+appropriate DOCX parser
+
+The plan must explain how each document type is handled.
+
+============================================================
+13. METADATA
+============================================================
+
+Metadata should support at minimum:
+
+- source
+- source type
+- document ID
+- document title
+- document type
+- version
+- effective date where applicable
+- expiry date where applicable
+- page number
+- section
+- category
+- subcategory
+- intent
+- user role
+- procedure
+- applicable context
+- language
+- checksum
+- status
+
+Explain which fields belong in relational columns and which belong in JSONB.
+
+============================================================
+14. EMBEDDINGS
+============================================================
+
+Use:
+
+BAAI/bge-small-en-v1.5
+
+Embedding dimension:
+
+384
+
+The plan must specify:
+
+- embedding service
+- batching
+- normalization if applicable
+- model loading strategy
+- CPU performance considerations
+- persistence
+- re-embedding strategy
+- embedding model version
+- handling changed documents
+- vector index configuration
+- similarity search
+
+Do not change the embedding model without explicitly identifying it as a proposed deviation.
+
+============================================================
+15. VECTOR RAG
+============================================================
+
+Implement a clean baseline Vector RAG path:
+
+Query
+ ↓
+Embedding
+ ↓
+pgvector similarity search
+ ↓
+Top-K candidate chunks
+ ↓
+Metadata filtering/reranking if applicable
+ ↓
+Evidence evaluation
+ ↓
+Prompt construction
+ ↓
+LLM
+ ↓
+Response
+
+The plan must specify:
+
+- similarity metric
+- top-K
+- filtering
+- ranking
+- metadata filters
+- context window
+- duplicate removal
+- evidence formatting
+- prompt structure
+- citation/source mapping
+
+The system must not dump the entire FAQ into the prompt.
+
+============================================================
+16. GRAPH RAG
+============================================================
+
+Graph RAG is a required part of the dissertation architecture.
+
+The graph should represent meaningful relationships such as:
+
+Issue
+    ↓
+Procedure
+    ↓
+Condition
+    ↓
+Document / Rule
+    ↓
+Chunk
+
+Potential graph entities:
+
+- Query
+- Issue
+- Intent
+- Procedure
+- Condition
+- Requirement
+- Rule
+- Document
+- Section
+- FAQ
+- Knowledge Chunk
+- User Role
+- Tender Concept
+- Technical Concept
+
+Potential relationships:
+
+- HAS_INTENT
+- REQUIRES
+- APPLIES_TO
+- RELATED_TO
+- RESOLVED_BY
+- DEFINED_IN
+- SUPPORTED_BY
+- CONDITIONED_BY
+- REQUIRES_PROCEDURE
+- APPLIES_TO_ROLE
+
+Do not create meaningless graph edges merely to say Graph RAG exists.
+
+The graph must support actual multi-hop/procedural retrieval.
+
+The plan must explain:
+
+- graph schema
+- graph node creation
+- graph edge creation
+- entity extraction
+- relationship extraction
+- graph updates
+- graph traversal
+- candidate evidence retrieval
+- mapping graph entities back to document chunks
+- handling stale/deleted documents
+- graph consistency
+
+============================================================
+17. CORRECTIVE RETRIEVAL
+============================================================
+
+Corrective retrieval is a required component.
+
+Initial retrieval:
+
+Query
+ ↓
+Candidate evidence
+ ↓
+Evidence evaluator
+
+Evaluate:
+
+- relevance
+- sufficiency
+- coverage
+- context completeness
+
+If insufficient:
+
+Query refinement
+or
+strategy refinement
+or
+additional retrieval
+or
+different retrieval method
+
+Then:
+
+Second retrieval
+ ↓
+Evidence evaluation
+ ↓
+Final evidence context
+
+The plan must define:
+
+- what counts as insufficient
+- scoring
+- thresholds
+- maximum retrieval attempts
+- loop prevention
+- logging
+- latency limits
+- failure behavior
+
+Do not create an infinite retrieval loop.
+
+Track every retrieval attempt.
+
+============================================================
+18. EVIDENCE EVALUATION
+============================================================
+
+The system must explicitly evaluate retrieved evidence before generation.
+
+At minimum:
+
+- relevance
+- sufficiency
+- coverage
+- evidence completeness
+
+The plan must determine whether evaluation is:
+
+- rule-based
+- embedding-based
+- LLM-based
+- hybrid
+
+Prefer a practical approach suitable for the laptop/server constraints.
+
+The evaluator should produce structured data such as:
+
+is_relevant
+is_sufficient
+coverage_score
+reason
+selected_evidence
+
+============================================================
+19. RESPONSE GENERATION
+============================================================
+
+The LLM should NOT answer from general knowledge when the system is expected to answer from the knowledge base.
+
+The response prompt should enforce:
+
+- use retrieved evidence
+- do not invent facts
+- do not fabricate procedures
+- clearly state when evidence is insufficient
+- distinguish source-supported information
+- provide concise actionable guidance
+- respect user role
+- respect context
+- cite/support source information
+
+The generated answer should include source attribution.
+
+Example:
+
+Answer:
+...
+
+Supporting source:
+GePNIC FAQ
+Page X
+
+The implementation plan must define the response prompt architecture and prompt versioning.
+
+============================================================
+20. USER-FACING APPLICATION
+============================================================
+
+Design the UI around the research system but keep it simple.
+
+Required user-facing pages:
+
+1. Landing / Home
+
+2. Login
+
+3. Dashboard
+
+4. Ask ClarifiBids / Chat
+
+5. Answer + Evidence
+
+6. Query History
+
+7. FAQ / Knowledge Browser
+
+8. Help / About
+
+The main workflow:
+
+Landing
+ ↓
+Login / Guest
+ ↓
+Dashboard
+ ↓
+Ask ClarifiBids
+ ↓
+Question
+ ↓
+Answer
+ ↓
+Supporting Evidence
+ ↓
+Follow-up question
+
+The user should NOT need to understand the underlying RAG implementation.
+
+============================================================
+21. ANSWER SCREEN
+============================================================
+
+The answer screen should expose enough transparency for research demonstration without overwhelming the user.
+
+Display:
+
+User question
+
+Answer
+
+Supporting sources
+
+Potentially:
+
+Query understanding:
+- Category
+- Subcategory
+- Intent
+- User role
+- Query depth
+
+Retrieval information should preferably be collapsible:
+
+"How ClarifiBids found this answer"
+
+Inside:
+
+- retrieval strategy
+- evidence count
+- evidence sufficiency
+- corrective retrieval if triggered
+- supporting documents
+
+The UI should not expose internal implementation details unnecessarily.
+
+============================================================
+22. ADMIN / RESEARCH INTERFACE
+============================================================
+
+Create a separate admin/research area.
+
+Required conceptual pages:
+
+Admin Dashboard
+
+Knowledge Sources
+
+Documents
+
+Document Ingestion
+
+Chunks / Knowledge Items
+
+Knowledge Graph
+
+Queries
+
+Retrieval Runs
+
+Evaluation Dataset
+
+Evaluation Results
+
+System Configuration
+
+The normal bidder should not see these.
+
+============================================================
+23. KNOWLEDGE BASE ADMINISTRATION
+============================================================
+
+Admin should eventually be able to:
+
+- upload documents
+- view document status
+- inspect ingestion status
+- inspect chunk count
+- inspect embedding status
+- inspect metadata
+- re-index documents
+- re-embed documents
+- deactivate documents
+- view source/version/checksum
+- inspect ingestion errors
+
+Do not implement dangerous deletion behavior without appropriate safeguards.
+
+============================================================
+24. DATABASE DESIGN
+============================================================
+
+Produce a complete database design.
+
+At minimum evaluate these domains.
+
+USER:
+
+users
+roles
+user_roles
+
+KNOWLEDGE:
+
+knowledge_sources
+documents
+document_chunks
+document_embeddings
+
+QUERY:
+
+queries
+query_categories
+query_subcategories
+query_intents
+query_classifications
+query_context
+
+RETRIEVAL:
+
+retrieval_runs
+retrieved_evidence
+evidence_evaluations
+
+RESPONSE:
+
+responses
+response_evidence
+
+GRAPH:
+
+graph_nodes
+graph_edges
+
+EVALUATION:
+
+evaluation_queries
+evaluation_results
+
+The plan must define:
+
+- columns
+- data types
+- primary keys
+- foreign keys
+- indexes
+- unique constraints
+- nullable/non-nullable fields
+- JSONB usage
+- timestamps
+- cascading behavior
+- soft deletion/versioning where appropriate
+
+Also explain the relationships.
+
+Suggested conceptual fields include:
+
+users:
+- id
+- username
+- email
+- password_hash where applicable
+- is_active
+- created_at
+- updated_at
+
+roles:
+- id
+- name
+- description
+
+user_roles:
+- user_id
+- role_id
+
+knowledge_sources:
+- id
+- source_name
+- source_type
+- description
+- location
+- version
+- is_active
+- created_at
+- updated_at
+
+documents:
+- id
+- source_id
+- title
+- document_type
+- file_name
+- file_path/storage reference
+- version
+- effective_date
+- expiry_date
+- language
+- checksum
+- status
+- created_at
+- updated_at
+
+document_chunks:
+- id
+- document_id
+- chunk_index
+- content
+- question where applicable
+- answer where applicable
+- page_number
+- section_title
+- token_count
+- metadata JSONB
+- created_at
+
+document_embeddings:
+- id
+- chunk_id
+- embedding VECTOR(384)
+- embedding_model
+- created_at
+
+queries:
+- id
+- user_id
+- session_id
+- query_text
+- created_at
+
+query_classifications:
+- id
+- query_id
+- category_id
+- subcategory_id
+- intent_id
+- depth_level
+- confidence_score
+- created_at
+
+query_context:
+- id
+- query_id
+- user_role
+- procedure
+- tender_reference where applicable
+- eligibility_condition
+- technical_context
+- additional_context JSONB
+
+retrieval_runs:
+- id
+- query_id
+- strategy
+- attempt_number
+- parent_run_id where useful
+- top_k
+- started_at
+- completed_at
+- status
+
+retrieved_evidence:
+- id
+- retrieval_run_id
+- chunk_id
+- similarity_score
+- rank
+- relevance_score
+- is_selected
+
+evidence_evaluations:
+- id
+- retrieval_run_id
+- is_relevant
+- is_sufficient
+- coverage_score
+- reason
+- created_at
+
+responses:
+- id
+- query_id
+- retrieval_run_id
+- response_text
+- model_name
+- provider
+- prompt_version
+- groundedness_score where available
+- created_at
+
+response_evidence:
+- response_id
+- evidence_id
+
+graph_nodes:
+- id
+- node_type
+- name
+- description
+- entity_id where applicable
+- metadata JSONB
+
+graph_edges:
+- id
+- source_node_id
+- target_node_id
+- relationship_type
+- weight
+- metadata JSONB
+
+evaluation_queries:
+- id
+- query_text
+- category_id
+- subcategory_id
+- intent_id
+- depth_level
+- user_role
+- expected_evidence
+- reference_answer
+
+evaluation_results:
+- id
+- evaluation_query_id
+- approach
+- precision_at_k
+- recall_at_k
+- answer_correctness
+- answer_relevance
+- faithfulness
+- context_completeness
+- created_at
+
+You may improve this schema, but every change must be justified.
+
+============================================================
+25. API DESIGN
+============================================================
+
+Produce a complete API plan.
+
+Organize endpoints logically, for example:
+
+/api/auth
+/api/chat
+/api/queries
+/api/classification
+/api/documents
+/api/knowledge
+/api/retrieval
+/api/evidence
+/api/graph
+/api/evaluation
+/api/admin
+
+Define for every endpoint:
+
+- method
+- URL
+- authentication requirement
+- request schema
+- response schema
+- error responses
+- validation
+- service called
+- database interaction
+- expected latency
+- logging
+
+Example conceptual flow:
+
+POST /api/chat/query
+
+Request:
+
+query
+session_id
+optional role/context
+
+Response:
+
+query_id
+classification
+answer
+sources
+retrieval_strategy
+evidence
+metadata
+
+Do not leave API contracts vague.
+
+============================================================
+26. BACKEND SERVICE ARCHITECTURE
+============================================================
+
+Design a modular backend.
+
+Suggested structure:
+
+backend/
+  app/
+    main.py
+
+    api/
+      auth.py
+      chat.py
+      documents.py
+      evaluation.py
+      knowledge.py
+      retrieval.py
+      graph.py
+
+    models/
+
+    schemas/
+
+    services/
+      ingestion_service.py
+      document_service.py
+      embedding_service.py
+      classification_service.py
+      context_service.py
+      vector_retrieval_service.py
+      graph_retrieval_service.py
+      corrective_retrieval_service.py
+      evidence_evaluation_service.py
+      response_service.py
+      llm_service.py
+
+    llm/
+      base.py
+      groq_provider.py
+      ollama_provider.py
+
+    graph/
+      builder.py
+      entities.py
+      traversal.py
+
+    rag/
+      vector_rag.py
+      graph_rag.py
+      prompts/
+
+    workflows/
+      clarifibids_workflow.py
+
+    core/
+      config.py
+      database.py
+      security.py
+      logging.py
+
+    migrations/
+
+The final plan may change the structure if there is a better architecture, but explain why.
+
+============================================================
+27. LANGGRAPH
+============================================================
+
+Use LangGraph where it genuinely helps orchestrate the workflow.
+
+Conceptually:
+
+START
+ ↓
+query_understanding
+ ↓
+classification
+ ↓
+context_identification
+ ↓
+retrieval_strategy_selection
+ ↓
+vector_or_graph_retrieval
+ ↓
+evidence_evaluation
+ ↓
+conditional:
+   sufficient → response_generation
+   insufficient → corrective_retrieval
+ ↓
+response_generation
+ ↓
+END
+
+The plan must define the state object.
+
+Potential state:
+
+query
+user
+role
+category
+subcategory
+intent
+depth
+entities
+required_context
+retrieval_strategy
+retrieval_attempt
+candidate_evidence
+evidence_evaluation
+corrective_retrieval_result
+final_context
+response
+sources
+
+Avoid unnecessary LangGraph complexity.
+
+============================================================
+28. LLAMAINDEX
+============================================================
+
+Use LlamaIndex Core only where it adds value.
+
+Explain exactly what LlamaIndex is responsible for.
+
+Do not introduce redundant abstractions where custom services are clearer.
+
+The final architecture should not contain unnecessary duplicate retrieval pipelines.
+
+============================================================
+29. SECURITY
+============================================================
+
+Plan for:
+
+- environment variables
+- secret management
+- Vault integration
+- Keycloak OIDC
+- JWT validation
+- role-based access
+- admin authorization
+- API authentication
+- CORS
+- input validation
+- SQL injection protection through ORM/parameterized queries
+- file upload validation
+- file size limits
+- allowed document types
+- safe file storage
+- prompt injection considerations
+- malicious document content
+- logging without leaking secrets
+- API rate limiting where appropriate
+
+Never expose:
+
+- API keys
+- passwords
+- JWT secrets
+- database credentials
+- Vault credentials
+
+============================================================
+30. PROMPT INJECTION / RAG SECURITY
+============================================================
+
+Because the system will eventually ingest external documents and historical content, the plan must consider prompt injection inside retrieved documents.
+
+The response generator must treat retrieved content as evidence/data, not instructions.
+
+The plan must explain:
+
+- document trust boundaries
+- system prompt separation
+- retrieved text delimiters
+- instruction hierarchy
+- malicious retrieved content handling
+- source attribution
+- refusal to follow instructions embedded in documents
+
+============================================================
+31. FRONTEND ARCHITECTURE
+============================================================
+
+Design a clean React architecture.
+
+Suggested:
+
+src/
+  components/
+  pages/
+  layouts/
+  hooks/
+  services/
+  api/
+  types/
+  context/
+  utils/
+  styles/
+
+Define:
+
+- routing
+- layouts
+- reusable UI components
+- chat components
+- source/evidence components
+- loading states
+- error states
+- empty states
+- authentication state
+- API client
+- type-safe API models
+
+Use TypeScript strictly.
+
+Do not build everything as one huge component.
+
+============================================================
+32. MAIN USER PAGES
+============================================================
+
+Define detailed UI/UX requirements for:
+
+1. Landing Page
+
+2. Login
+
+3. Dashboard
+
+4. Ask ClarifiBids / Chat
+
+5. Answer + Evidence
+
+6. Query History
+
+7. FAQ Browser
+
+8. Help/About
+
+Dashboard should prominently provide:
+
+- question input
+- suggested questions
+- categories
+- recent queries
+
+The application should clearly state that ClarifiBids is an assistance layer and does not perform procurement transactions.
+
+============================================================
+33. ADMIN / RESEARCH PAGES
+============================================================
+
+Define:
+
+1. Admin Dashboard
+
+2. Knowledge Sources
+
+3. Documents
+
+4. Document ingestion status
+
+5. Knowledge chunks
+
+6. Knowledge graph
+
+7. Query logs
+
+8. Retrieval runs
+
+9. Evaluation dataset
+
+10. Evaluation results
+
+11. System configuration
+
+============================================================
+34. INITIAL FAQ EXPERIENCE
+============================================================
+
+The first working demo should be able to answer FAQ-derived questions such as:
+
+- bidder enrollment
+- password recovery
+- DSC registration
+- DSC activation
+- DSC replacement
+- tender information
+- bid document questions
+- security-related questions
+- foreign bidder questions
+- department-user questions
+
+The plan must not hard-code answers.
+
+All answers should come from the indexed knowledge source.
+
+============================================================
+35. QUERY HISTORY
+============================================================
+
+Store:
+
+- user
+- query
+- timestamp
+- classification
+- retrieval strategy
+- evidence
+- answer
+- sources
+
+The user should be able to revisit previous queries.
+
+============================================================
+36. SOURCE ATTRIBUTION
+============================================================
+
+Every generated answer should retain traceability to retrieved evidence.
+
+The plan must explain how:
+
+response
+    ↓
+retrieval run
+    ↓
+retrieved evidence
+    ↓
+document chunk
+    ↓
+source document
+
+This must be preserved in the database.
+
+============================================================
+37. LOGGING / OBSERVABILITY
+============================================================
+
+Plan structured logging for:
+
+- request ID
+- user ID where appropriate
+- query ID
+- retrieval run ID
+- strategy
+- model/provider
+- latency
+- retrieved chunk IDs
+- evidence scores
+- corrective retrieval
+- errors
+
+Do not log secrets or sensitive content unnecessarily.
+
+Track latency separately for:
+
+- query classification
+- embedding
+- vector search
+- graph search
+- evidence evaluation
+- corrective retrieval
+- LLM
+- total request
+
+This is important because the system is intended to be efficient.
+
+============================================================
+38. PERFORMANCE
+============================================================
+
+The initial development environment is a CPU-only laptop:
+
+Intel i3
+8 GB RAM
+No discrete GPU
+Intel UHD graphics
+
+Therefore:
+
+- avoid unnecessarily large local models
+- keep retrieval efficient
+- use small embedding model
+- limit context size
+- limit top-K
+- limit generated output
+- support streaming
+- avoid loading multiple large models simultaneously
+- avoid excessive database processes
+- avoid unnecessary infrastructure
+- design for single-request development usage
+- make heavy components optional
+
+Groq is being used initially to reduce local inference latency.
+
+Later, Ollama + Qwen2.5 1.5B should be possible.
+
+============================================================
+39. CACHING
+============================================================
+
+Evaluate caching opportunities:
+
+- embeddings
+- repeated queries
+- FAQ retrieval
+- classification
+- document parsing
+
+Do not add Redis automatically.
+
+Prefer PostgreSQL/application-level caching for the initial implementation unless there is a demonstrated need for Redis.
+
+============================================================
+40. ERROR HANDLING
+============================================================
+
+Define behavior for:
+
+- empty query
+- ambiguous query
+- classification failure
+- no retrieval results
+- insufficient evidence
+- corrective retrieval failure
+- LLM unavailable
+- Groq API failure
+- database unavailable
+- embedding failure
+- document parsing failure
+- invalid upload
+- authentication failure
+- authorization failure
+- timeout
+
+Important:
+
+If evidence is insufficient, the system must NOT hallucinate an answer.
+
+It should clearly communicate that the available knowledge base does not provide sufficient evidence.
+
+============================================================
+41. EVALUATION FRAMEWORK
+============================================================
+
+Evaluation is a core dissertation requirement.
+
+The plan must support three approaches:
+
+A. Conventional FAQ / keyword retrieval
+
+B. Baseline Vector RAG
+
+C. Graph RAG
+
+Evaluation dataset should contain:
+
+- FAQ queries
+- historical clarification queries later
+- portal/procedural document queries later
+
+Each evaluation query should include:
+
+- category
+- intent
+- user role
+- query depth
+- expected evidence
+- reference answer
+
+Metrics:
+
+Retrieval:
+- Precision@K
+- Recall@K
+
+Answer:
+- answer correctness
+- answer relevance
+- faithfulness / groundedness
+
+Context:
+- context completeness
+
+Evaluation must be broken down by query depth:
+
+- Direct
+- Procedural
+- Context-dependent
+- Multi-source / Multi-hop
+
+Also support human evaluation where appropriate.
+
+Do not reduce the dissertation evaluation to a single overall score.
+
+============================================================
+42. EVALUATION DATASET MANAGEMENT
+============================================================
+
+Create a structured evaluation dataset format.
+
+Example:
+
+{
+  "query": "...",
+  "category": "...",
+  "subcategory": "...",
+  "intent": "...",
+  "user_role": "...",
+  "depth_level": "...",
+  "expected_evidence": [...],
+  "reference_answer": "..."
+}
+
+The plan must explain:
+
+- storage
+- versioning
+- importing
+- editing
+- running experiments
+- storing results
+- comparing approaches
+- reproducibility
+
+============================================================
+43. RESEARCH EXPERIMENT REPRODUCIBILITY
+============================================================
+
+Every evaluation run should record:
+
+- dataset version
+- retrieval approach
+- embedding model
+- embedding version
+- LLM provider
+- LLM model
+- prompt version
+- top-K
+- retrieval thresholds
+- graph configuration
+- corrective retrieval settings
+- timestamp
+
+This is important for dissertation reproducibility.
+
+============================================================
+44. TESTING STRATEGY
+============================================================
+
+Create a complete test plan.
+
+UNIT TESTS:
+
+- classification
+- metadata extraction
+- chunking
+- embedding
+- vector retrieval
+- graph traversal
+- evidence evaluation
+- corrective retrieval
+- prompt formatting
+- response parsing
+
+INTEGRATION TESTS:
+
+- database
+- pgvector
+- ingestion
+- retrieval
+- Groq
+- authentication
+- API
+
+END-TO-END TEST:
+
+User query
+ ↓
+classification
+ ↓
+retrieval
+ ↓
+evidence evaluation
+ ↓
+LLM
+ ↓
+answer
+ ↓
+sources
+
+REGRESSION TESTS:
+
+Use a fixed set of FAQ questions.
+
+The plan should define acceptance criteria.
+
+============================================================
+45. DATABASE MIGRATIONS
+============================================================
+
+Use Alembic.
+
+Plan migrations in logical stages:
+
+1. auth/user tables
+2. knowledge tables
+3. query/classification tables
+4. retrieval/evidence tables
+5. response tables
+6. graph tables
+7. evaluation tables
+
+Seed:
+
+- roles
+- categories
+- subcategories
+- initial intents
+- development data
+
+============================================================
+46. CONFIGURATION
+============================================================
+
+Use environment-based configuration.
+
+Separate:
+
+development
+testing
+production
+
+Potential settings:
+
+DATABASE_URL
+LLM_PROVIDER
+LLM_MODEL
+GROQ_API_KEY
+OLLAMA_BASE_URL
+EMBEDDING_MODEL
+TOP_K
+SIMILARITY_THRESHOLD
+MAX_CONTEXT_TOKENS
+MAX_OUTPUT_TOKENS
+RETRIEVAL_MAX_ATTEMPTS
+LOG_LEVEL
+
+Do not hard-code secrets or environment-specific values.
+
+============================================================
+47. DOCKER / LOCAL DEVELOPMENT
+============================================================
+
+Evaluate a simple Docker Compose setup.
+
+At minimum consider:
+
+- PostgreSQL + pgvector
+- backend
+- frontend
+
+Do NOT containerize unnecessary infrastructure.
+
+Explain whether Ollama should be:
+
+- optional
+- local host
+- containerized later
+
+Because the development laptop only has 8 GB RAM.
+
+============================================================
+48. INITIAL MVP DEFINITION
+============================================================
+
+The MVP is complete when a user can:
+
+1. Open ClarifiBids.
+2. Login or use supported guest mode if implemented.
+3. Enter a natural-language GePNIC question.
+4. Have the query classified.
+5. Retrieve relevant FAQ evidence.
+6. Evaluate evidence.
+7. Perform corrective retrieval when necessary.
+8. Send evidence to Groq.
+9. Receive a grounded answer.
+10. See supporting source information.
+11. Ask a follow-up.
+12. View query history.
+
+The MVP must use the provided FAQ document as the knowledge source.
+
+============================================================
+49. PHASED IMPLEMENTATION
+============================================================
+
+Produce a detailed implementation roadmap.
+
+PHASE 0:
+Repository analysis and architecture setup.
+
+PHASE 1:
+Project foundation.
+
+PHASE 2:
+Database + migrations.
+
+PHASE 3:
+FAQ ingestion.
+
+PHASE 4:
+Embedding + pgvector.
+
+PHASE 5:
+Query understanding/classification.
+
+PHASE 6:
+Vector RAG.
+
+PHASE 7:
+Groq integration.
+
+PHASE 8:
+Evidence evaluation.
+
+PHASE 9:
+Corrective retrieval.
+
+PHASE 10:
+Frontend user application.
+
+PHASE 11:
+Authentication/authorization.
+
+PHASE 12:
+Graph data model.
+
+PHASE 13:
+Graph construction.
+
+PHASE 14:
+Graph RAG.
+
+PHASE 15:
+Additional knowledge sources.
+
+PHASE 16:
+Evaluation framework.
+
+PHASE 17:
+Research/evaluation dashboard.
+
+PHASE 18:
+Performance optimization.
+
+PHASE 19:
+Security hardening.
+
+PHASE 20:
+Testing, documentation, deployment, dissertation demonstration.
+
+For every phase provide:
+
+- objective
+- prerequisites
+- exact files/modules
+- database changes
+- APIs
+- frontend work
+- backend work
+- tests
+- acceptance criteria
+- dependencies
+- risks
+- rollback considerations
+- what becomes available after completion
+
+============================================================
+50. FILE/FOLDER STRUCTURE
+============================================================
+
+Propose a complete repository structure.
+
+Conceptually:
+
+clarifibids/
+│
+├── frontend/
+│
+├── backend/
+│
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   └── evaluation/
+│
+├── docs/
+│
+├── tests/
+│
+├── scripts/
+│
+├── docker-compose.yml
+├── README.md
+└── .env.example
+
+Backend should be modular.
+
+Frontend should be modular.
+
+The plan must show the final tree and explain the purpose of every important folder.
+
+============================================================
+51. DOCUMENT VERSIONING / FUTURE DATA INGESTION
+============================================================
+
+The system must support replacing/updating documents.
+
+If FAQ v2 replaces FAQ v1:
+
+- detect changed document
+- preserve checksum
+- mark old version appropriately
+- re-ingest changed content
+- re-embed changed chunks
+- update graph relationships
+- avoid duplicate active knowledge
+- preserve historical evaluation reproducibility
+
+Do not simply delete everything and rebuild the entire database every time.
+
+============================================================
+52. DATA QUALITY
+============================================================
+
+The plan must include validation for:
+
+- duplicate questions
+- duplicate chunks
+- malformed Q&A
+- empty answers
+- missing metadata
+- contradictory documents
+- outdated documents
+- document versions
+- source authority
+- incomplete extraction
+
+Future multi-source retrieval must have a strategy for conflicting evidence.
+
+Do not invent conflict-resolution rules without identifying them as design decisions.
+
+============================================================
+53. CHAT / FOLLOW-UP CONTEXT
+============================================================
+
+Support conversational follow-up questions.
+
+Example:
+
+User:
+"How long does DSC activation take?"
+
+Assistant:
+"Up to 24 hours..."
+
+User:
+"What if I already submitted the bid?"
+
+The second query should be able to use conversation context where appropriate.
+
+The plan must define:
+
+- session
+- conversation
+- message
+- context window
+- context persistence
+- when old context should be ignored
+- how retrieval uses current query + relevant conversation context
+
+Do not blindly send the entire conversation to the LLM.
+
+============================================================
+54. UI DESIGN PRINCIPLES
+============================================================
+
+The UI should be:
+
+- professional
+- clean
+- academic/research-project quality
+- procurement-oriented
+- accessible
+- responsive
+- not overloaded
+- clearly distinguish AI-generated answer from source evidence
+
+Use the application's purpose to drive the UI.
+
+Do not make it look like a generic ChatGPT clone.
+
+The main differentiator should be:
+
+"Evidence-supported, context-aware assistance for GePNIC."
+
+============================================================
+55. NON-GOALS
+============================================================
+
+Do NOT implement ClarifiBids as:
+
+- tender submission system
+- tender creation system
+- payment system
+- bid modification system
+- replacement GePNIC portal
+- transaction processing system
+
+ClarifiBids only provides assistance and information.
+
+============================================================
+56. IMPORTANT ARCHITECTURAL PRINCIPLES
+============================================================
+
+1. Retrieval does the knowledge work.
+2. The LLM synthesizes retrieved evidence.
+3. Do not fine-tune the LLM for the FAQ MVP.
+4. Keep LLM provider replaceable.
+5. Keep embedding model replaceable.
+6. Keep retrieval strategies modular.
+7. Do not use Graph RAG for every query.
+8. Do not hallucinate when evidence is insufficient.
+9. Preserve source traceability.
+10. Log retrieval/evidence decisions.
+11. Design the database for future knowledge sources.
+12. Design the evaluation framework from the beginning.
+13. Keep the initial system lightweight enough for an 8 GB CPU-only laptop.
+14. Avoid unnecessary infrastructure.
+15. Do not silently deviate from the dissertation scope.
+
+============================================================
+57. WHAT YOUR OUTPUT MUST CONTAIN
+============================================================
+
+Your response must be a MASTER IMPLEMENTATION PLAN, not code.
+
+Organize it into these sections:
+
+1. Executive architecture summary
+
+2. Repository assessment
+
+3. Requirements traceability matrix
+
+4. Architecture diagram
+
+5. Component architecture
+
+6. Frontend architecture
+
+7. Backend architecture
+
+8. Database architecture
+
+9. RAG architecture
+
+10. Query understanding architecture
+
+11. Vector retrieval architecture
+
+12. Graph RAG architecture
+
+13. Corrective retrieval architecture
+
+14. Evidence evaluation architecture
+
+15. LLM abstraction architecture
+
+16. Document ingestion architecture
+
+17. Knowledge-source architecture
+
+18. Authentication/security architecture
+
+19. API specification
+
+20. Database schema
+
+21. Frontend page specification
+
+22. Admin/research page specification
+
+23. LangGraph workflow
+
+24. Prompt architecture
+
+25. Configuration/environment variables
+
+26. File/folder structure
+
+27. Development environment
+
+28. Docker/local deployment plan
+
+29. Testing strategy
+
+30. Evaluation strategy
+
+31. Performance strategy
+
+32. Security strategy
+
+33. Logging/observability
+
+34. Data versioning
+
+35. Phased implementation roadmap
+
+36. Exact implementation task checklist
+
+37. Acceptance criteria
+
+38. Risks and mitigations
+
+39. Dissertation requirement traceability
+
+40. Final "definition of done"
+
+============================================================
+58. REQUIREMENTS TRACEABILITY
+============================================================
+
+At the end, produce a matrix:
+
+Requirement
+    → Dissertation source/requirement
+    → Planned component
+    → Database
+    → API
+    → Frontend
+    → Test
+    → Phase
+    → Status
+
+Make sure every major dissertation requirement is accounted for.
+
+Especially verify:
+
+- six categories
+- three user roles
+- four query depth levels
+- query hierarchy
+- context/evidence identification
+- FAQ source
+- support KB
+- portal/procedural documents
+- metadata
+- embeddings
+- baseline Vector RAG
+- Graph RAG
+- corrective retrieval
+- evidence evaluation
+- response generation
+- source attribution
+- keyword baseline
+- Vector RAG baseline
+- Graph RAG comparison
+- Precision@K
+- Recall@K
+- correctness
+- relevance
+- faithfulness
+- context completeness
+- depth-wise evaluation
+- human evaluation
+- future knowledge expansion
+- no modification to GePNIC workflow
+
+============================================================
+59. CRITICAL INSTRUCTION: DO NOT OVERSIMPLIFY
+============================================================
+
+Do not respond with a generic plan such as:
+
+"Build frontend → backend → database → AI."
+
+That is insufficient.
+
+I need a plan detailed enough to implement the entire system.
+
+For every important component tell me:
+
+WHAT
+WHY
+WHERE
+HOW
+INPUT
+OUTPUT
+DEPENDENCIES
+DATABASE
+API
+TEST
+FAILURE MODE
+
+============================================================
+60. CRITICAL INSTRUCTION: DO NOT OVERENGINEER
+============================================================
+
+At the same time, do not introduce unnecessary enterprise infrastructure.
+
+The project is a dissertation/research prototype.
+
+Prefer:
+
+- PostgreSQL
+- pgvector
+- FastAPI
+- React
+- LangGraph where useful
+- LlamaIndex where useful
+- Groq initially
+- Ollama later
+- simple modular services
+
+Avoid unnecessary:
+
+- Kubernetes
+- microservices
+- Kafka
+- Redis
+- separate vector database
+- separate graph database
+- complex distributed systems
+
+unless you provide a specific, justified reason.
+
+============================================================
+61. CURRENT IMPLEMENTATION PRIORITY
+============================================================
+
+After producing the complete master plan, identify the exact subset that should be implemented FIRST.
+
+The first implementation milestone should be:
+
+FAQ-only working MVP:
+
+React
+    ↓
+FastAPI
+    ↓
+Query classification
+    ↓
+FAQ retrieval
+    ↓
+pgvector
+    ↓
+Evidence evaluation
+    ↓
+Groq
+    ↓
+Grounded answer
+    ↓
+Sources
+
+Then explain exactly how later milestones plug into this without breaking the existing architecture.
+
+============================================================
+62. FINAL SELF-CHECK
+============================================================
+
+Before finishing your plan, perform an internal architecture audit.
+
+Check for:
+
+- missing dissertation requirements
+- missing database tables
+- missing APIs
+- missing frontend pages
+- missing backend services
+- missing migrations
+- missing tests
+- missing evaluation capability
+- missing source traceability
+- missing corrective retrieval
+- missing Graph RAG
+- missing future document ingestion
+- missing user roles
+- missing query depth
+- missing category hierarchy
+- missing evidence evaluation
+- missing provider abstraction
+- missing security
+- missing performance constraints
+- missing versioning
+- missing observability
+
+Then provide:
+
+A. "Requirements fully covered"
+
+B. "Known ambiguities / decisions requiring confirmation"
+
+C. "Assumptions made"
+
+D. "Potential dissertation risks"
+
+E. "Exact first implementation sequence"
+
+============================================================
+63. VERY IMPORTANT FINAL RULE
+============================================================
+
+Do not start implementing after generating the plan.
+
+First produce the complete plan.
+
+After the plan, wait for confirmation before modifying project files.
+
+When implementation eventually begins, implement phase-by-phase and keep the implementation aligned with the approved plan.
+
+The goal is not merely to create a working chatbot.
+
+The goal is to create the complete ClarifiBids research system described above, while allowing the first working version to remain small:
+
+FAQ → Vector RAG → Evidence Evaluation → Corrective Retrieval → Groq → Grounded Answer
+
+and later expand into:
+
+FAQ + Support KB + Portal/Procedural Documents
+        ↓
+Vector RAG + Graph RAG
+        ↓
+Evidence Evaluation
+        ↓
+Corrective Retrieval
+        ↓
+Evidence-Grounded Response
+        ↓
+Comparative Evaluation
+
+Produce the complete implementation plan now.
