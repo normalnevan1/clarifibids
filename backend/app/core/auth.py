@@ -47,3 +47,26 @@ async def get_current_user_optional(
         return None
     payload = decode_access_token(cred.credentials)
     return payload
+
+async def require_admin_user(
+    cred: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)
+) -> Dict[str, Any]:
+    if not cred or not cred.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in as an administrator."
+        )
+    payload = decode_access_token(cred.credentials)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication token."
+        )
+    role = payload.get("role")
+    if role != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden: Document uploads and management are strictly restricted to the ADMIN role."
+        )
+    return payload
+

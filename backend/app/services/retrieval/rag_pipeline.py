@@ -1,7 +1,11 @@
 import asyncio
+import time
 from typing import List, Dict, Any, Optional
+import numpy as np
 from pydantic import BaseModel
 from sqlalchemy import select
+
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models import DocumentChunk, DocumentEmbedding
 from app.services.embedding.embedding_service import embedding_service
@@ -10,7 +14,7 @@ from app.services.evaluation.evidence_evaluator import evidence_evaluator
 from app.services.response.prompt_service import build_llm_messages
 from app.llm.groq_provider import get_llm_provider
 from app.services.retrieval.graph_service import graph_service
-from app.core.config import settings
+
 
 class RAGResult(BaseModel):
     query: str
@@ -36,12 +40,13 @@ class RAGPipeline:
         top_k: int = settings.TOP_K,
         depth_level: str = "Direct"
     ) -> List[Dict[str, Any]]:
-        import numpy as np
+        # 1. Generate normalized 384-d semantic embedding for the query text
         query_vec = np.array(self.embedding_svc.embed_text(query), dtype=np.float32)
         norm_q = np.linalg.norm(query_vec)
         if norm_q > 0:
             query_vec = query_vec / norm_q
-        
+
+        # 2. Query PostgreSQL for document chunks and their corresponding embeddings
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(DocumentChunk, DocumentEmbedding.embedding)
@@ -54,16 +59,27 @@ class RAGPipeline:
             for chunk_row, emb_list in rows:
                 chunk_role = (chunk_row.metadata_ or {}).get("user_role", "Bidder")
                 
-                # --- STRICT ROLE-BASED ACCESS CONTROL (RBAC) ---
-                # 1. Domestic 'Bidder' CANNOT access 'Foreign Bidder' or 'Department User' sections
-                if user_role == "Bidder" and chunk_role in ["Foreign Bidder", "Department User"]:
-                    continue
-                # 2. 'Foreign Bidder' CANNOT access internal administrative 'Department User' sections
-                if user_role == "Foreign Bidder" and chunk_role == "Department User":
-                    continue
-                # 3. 'Department User' has administrative clearance to inspect Departmental and General Bidder sections
-                
+                # -------------------------------------------------------------
+                # STRICT ROLE-BASED ACCESS CONTROL (RBAC) FILTER
+                # -------------------------------------------------------------
+                # 1. 'GENERAL' (or 'ALL') chunks: Common information accessible to all roles.
+                # 2. Role-specific chunks: Accessible ONLY if matching user's current role.
+                # -------------------------------------------------------------
+                is_general = chunk_role in ["GENERAL", "ALL", "Universal"]
+
+                if not is_general:
+                    if user_role == "Bidder" and chunk_role != "Bidder":
+                        continue
+                    if user_role == "Foreign Bidder" and chunk_role != "Foreign Bidder":
+                        continue
+                    if user_role == "Department User" and chunk_role != "Department User":
+                        continue
+
+                # Compute cosine similarity between normalized query and chunk vector
                 chunk_vec = np.array(emb_list, dtype=np.float32)
+                norm_c = np.linalg.norm(chunk_vec)
+                if norm_c > 0:
+                    chunk_vec = chunk_vec / norm_c
                 norm_c = np.linalg.norm(chunk_vec)
                 if norm_c > 0:
                     chunk_vec = chunk_vec / norm_c

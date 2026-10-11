@@ -7,8 +7,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:nevan123*@127.0.0.1:5432/clarifibids_db"
-    SYNC_DATABASE_URL: str = "postgresql+psycopg://postgres:nevan123*@127.0.0.1:5432/clarifibids_db"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/clarifibids_db"
+    SYNC_DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/clarifibids_db"
+
     
     # LLM
     LLM_PROVIDER: str = "groq"

@@ -9,7 +9,11 @@ import {
   FileCheck, 
   AlertTriangle, 
   Download,
-  Trash2
+  Trash2,
+  Upload,
+  FileText,
+  X,
+  ShieldAlert
 } from 'lucide-react';
 
 interface Source {
@@ -86,6 +90,86 @@ export default function App() {
 
   const [queryText, setQueryText] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Admin Knowledge Upload & Documents List State
+  const [adminDocs, setAdminDocs] = useState<any[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadSourceName, setUploadSourceName] = useState('');
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [uploadResult, setUploadResult] = useState<any>(null);
+  const [uploadError, setUploadError] = useState('');
+
+  const fetchAdminDocs = async () => {
+    const token = authToken || localStorage.getItem('clarifibids_token');
+    if (!token) return;
+    setLoadingDocs(true);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/admin/documents', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminDocs(data.documents || []);
+      }
+    } catch (e) {
+      console.error("Failed to load documents", e);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (currentUser?.role === 'ADMIN') {
+      fetchAdminDocs();
+    }
+  }, [currentUser?.role, authToken]);
+
+
+
+  const handleDocumentUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile) return;
+
+    setUploadSubmitting(true);
+    setUploadError('');
+    setUploadResult(null);
+
+    const formData = new FormData();
+    formData.append('file', uploadFile);
+    if (uploadSourceName) formData.append('source_name', uploadSourceName);
+
+    try {
+      const headers: Record<string, string> = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+      const res = await fetch('http://localhost:8000/api/v1/admin/documents/upload', {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Upload failed with status ${res.status}`);
+      }
+
+      const resData = await res.json();
+      setUploadResult(resData.data);
+      setUploadFile(null);
+      setUploadSourceName('');
+      fetchAdminDocs(); // Refresh documents table
+    } catch (err: any) {
+      setUploadError(err.message);
+    } finally {
+      setUploadSubmitting(false);
+    }
+  };
+
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const savedUser = localStorage.getItem('clarifibids_user');
     if (savedUser) {
@@ -410,8 +494,10 @@ export default function App() {
                       <option value="Bidder">Bidder (Domestic Indian Procurement)</option>
                       <option value="Foreign Bidder">Foreign Bidder (International Vendor)</option>
                       <option value="Department User">Department User (Procuring Entity)</option>
+                      <option value="ADMIN">ADMIN (System & Document Management)</option>
                     </select>
                   </div>
+
                   <div className="role-badge-explainer">
                     <ShieldCheck size={16} />
                     <span>Your selected role enforces data isolation and permitted operational procedures.</span>
@@ -498,6 +584,20 @@ export default function App() {
             </div>
           </div>
 
+          {/* Direct Upload Button for ADMIN */}
+          {currentUser?.role === 'ADMIN' && (
+            <button 
+              onClick={() => { setShowUploadModal(true); setUploadResult(null); setUploadError(''); }}
+              className="submit-auth-btn"
+              style={{ width: 'auto', padding: '0.45rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+              title="Upload new knowledge base documents"
+            >
+              <Upload size={15} />
+              <span>Upload Document</span>
+            </button>
+          )}
+
+
           {/* Download Official Document Button */}
           <a 
             href="/FAQ.docx" 
@@ -540,9 +640,137 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="main-content">
-        {/* Welcome Card if no messages */}
+      {/* Main Workspace (Admin Panel for ADMIN; Chat Interface for all other roles) */}
+      {currentUser?.role === 'ADMIN' ? (
+        <main className="main-content" style={{ overflowY: 'auto', background: '#f8fafc' }}>
+
+          <div className="admin-panel-container">
+            {/* Admin Header Card */}
+            <div className="admin-header-card">
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <ShieldAlert size={20} color="#0284c7" />
+                  <span style={{ fontSize: '0.8rem', color: '#0284c7', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Central Knowledge Base Administration
+                  </span>
+                </div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0f172a' }}>Admin Control Panel</h2>
+                <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  Restricted to system administrators. Upload, chunk, and intelligently index domain documents across roles.
+                </p>
+              </div>
+
+              <button 
+                onClick={() => { setShowUploadModal(true); setUploadResult(null); setUploadError(''); }}
+                className="submit-auth-btn"
+                style={{ width: 'auto', padding: '0.6rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <Upload size={16} />
+                <span>Upload New Document</span>
+              </button>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="admin-stats-grid">
+              <div className="admin-stat-card">
+                <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Total Knowledge Sources</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0f172a', marginTop: '0.25rem' }}>
+                  {adminDocs.length} Documents
+                </div>
+              </div>
+              <div className="admin-stat-card">
+                <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Total Indexed Chunks</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0284c7', marginTop: '0.25rem' }}>
+                  {adminDocs.reduce((acc, d) => acc + (d.chunk_count || 0), 0)} Chunks
+                </div>
+              </div>
+              <div className="admin-stat-card">
+                <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Embedding Dimension</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#16a34a', marginTop: '0.25rem' }}>
+                  384 dims (BAAI)
+                </div>
+              </div>
+              <div className="admin-stat-card">
+                <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Role RBAC Policies</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#9333ea', marginTop: '0.25rem' }}>
+                  3 Isolated Roles
+                </div>
+              </div>
+            </div>
+
+            {/* Ingested Documents List */}
+            <div className="admin-docs-table-card">
+              <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>Ingested Knowledge Documents</h3>
+                <button 
+                  onClick={fetchAdminDocs} 
+                  className="download-doc-btn"
+                  style={{ fontSize: '0.78rem' }}
+                >
+                  Refresh List
+                </button>
+              </div>
+
+              {loadingDocs ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                  Loading knowledge base records...
+                </div>
+              ) : adminDocs.length === 0 ? (
+                <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+                  No documents found. Click "Upload New Document" above to index your first file.
+                </div>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Document Title</th>
+                      <th>File Name</th>
+                      <th>Format</th>
+                      <th>Total Chunks</th>
+                      <th>Indexing Status</th>
+                      <th>Date Indexed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminDocs.map((doc, idx) => (
+                      <tr key={doc.id || idx}>
+                        <td style={{ fontWeight: 600, color: '#0f172a' }}>{doc.title}</td>
+                        <td style={{ color: '#475569' }}>{doc.file_name}</td>
+                        <td>
+                          <span style={{ fontSize: '0.72rem', background: '#e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 700 }}>
+                            {doc.document_type}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 700, color: '#0284c7' }}>{doc.chunk_count} chunks</td>
+                        <td>
+                          <span style={{ 
+                            fontSize: '0.72rem', 
+                            background: doc.status === 'INDEXED' ? '#dcfce7' : '#fef3c7', 
+                            color: doc.status === 'INDEXED' ? '#15803d' : '#b45309', 
+                            padding: '0.2rem 0.55rem', 
+                            borderRadius: '999px',
+                            fontWeight: 700
+                          }}>
+                            {doc.status}
+                          </span>
+                        </td>
+                        <td style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                          {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </main>
+      ) : (
+        <>
+          {/* Main Workspace */}
+          <main className="main-content">
+            {/* Welcome Card if no messages */}
+
         {messages.length === 0 && (
           <div className="welcome-card">
             <div className="welcome-icon">
@@ -687,6 +915,124 @@ export default function App() {
           ClarifiBids is an intelligent assistance layer and does not modify GePNIC procurement workflows.
         </p>
       </footer>
+      </>
+      )}
+
+
+      {/* Admin Document Upload Modal */}
+      {showUploadModal && (
+        <div className="modal-backdrop" onClick={() => setShowUploadModal(false)}>
+          <div className="modal-dialog" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Upload size={18} color="#0284c7" />
+                <h3 className="modal-title">Upload & Index Knowledge Document</h3>
+              </div>
+              <button className="modal-close-btn" onClick={() => setShowUploadModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.5 }}>
+                Upload any procurement document (<strong>.docx</strong>, <strong>.pdf</strong>, <strong>.txt</strong>).
+                ClarifiBids will chunk the document and use <strong>Groq AI</strong> to intelligently classify each section into:
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                  <span className="role-badge-tag role-badge-general">GENERAL (Common)</span>
+                  <span className="role-badge-tag role-badge-bidder">Bidder (Domestic)</span>
+                  <span className="role-badge-tag role-badge-foreign">Foreign Bidder</span>
+                  <span className="role-badge-tag role-badge-department">Department User</span>
+                </div>
+              </div>
+
+              {uploadError && (
+                <div className="auth-error-banner" style={{ margin: 0 }}>
+                  <AlertCircle size={16} />
+                  <span>{uploadError}</span>
+                </div>
+              )}
+
+              {uploadResult && (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#166534', fontWeight: 700, marginBottom: '0.5rem' }}>
+                    <CheckCircle2 size={16} />
+                    <span>Document Indexed Successfully!</span>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#14532d' }}>
+                    <strong>{uploadResult.file_name}</strong> was split into <strong>{uploadResult.total_chunks} chunks</strong> with embeddings.
+                  </div>
+                  <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: '#14532d' }}>
+                    <strong>Role Breakdown:</strong>
+                    <ul style={{ paddingLeft: '1.25rem', marginTop: '0.25rem' }}>
+                      <li>Common (GENERAL): {uploadResult.role_breakdown?.GENERAL || 0} chunks</li>
+                      <li>Domestic Bidder: {uploadResult.role_breakdown?.Bidder || 0} chunks</li>
+                      <li>Foreign Bidder: {uploadResult.role_breakdown?.['Foreign Bidder'] || 0} chunks</li>
+                      <li>Department User: {uploadResult.role_breakdown?.['Department User'] || 0} chunks</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleDocumentUpload} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Knowledge Source Title (Optional)</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. GePNIC Tender Submission Manual 2026"
+                    value={uploadSourceName}
+                    onChange={e => setUploadSourceName(e.target.value)}
+                  />
+                </div>
+
+                <div 
+                  className="file-dropzone"
+                  onClick={() => document.getElementById('file-upload-input')?.click()}
+                >
+                  <FileText size={32} color="#0284c7" style={{ margin: '0 auto 0.5rem auto' }} />
+                  <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>
+                    {uploadFile ? uploadFile.name : 'Click to select a document (.docx, .pdf, .txt)'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                    {uploadFile ? `${(uploadFile.size / 1024).toFixed(1)} KB` : 'Maximum file size: 25 MB'}
+                  </div>
+                  <input
+                    id="file-upload-input"
+                    type="file"
+                    accept=".docx,.pdf,.txt,.md"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setUploadFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  <button 
+                    type="button" 
+                    className="download-doc-btn" 
+                    onClick={() => setShowUploadModal(false)}
+                    disabled={uploadSubmitting}
+                  >
+                    Close
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="submit-auth-btn" 
+                    style={{ width: 'auto', padding: '0.5rem 1.25rem' }}
+                    disabled={!uploadFile || uploadSubmitting}
+                  >
+                    {uploadSubmitting ? 'Chunking & Classifying with AI...' : 'Upload & Auto-Classify'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

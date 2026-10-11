@@ -1,18 +1,46 @@
-from fastapi import FastAPI, Depends, HTTPException, Query as FastAPIQuery
+import logging
+import uuid
+from contextlib import asynccontextmanager
+from typing import Optional, List, Dict, Any
+
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from sqlalchemy import select, func
+
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal
+from app.core.auth import (
+    hash_password, verify_password, create_access_token, get_current_user_optional, require_admin_user
+)
+from app.models import (
+    User, Role, UserRole, Query, QueryClassification, QueryCategory,
+    RetrievalRun, RetrievedEvidence, EvidenceEvaluation, Response,
+    Document, DocumentChunk, EvaluationResult, EvaluationQuery
+)
 from app.services.retrieval.rag_pipeline import rag_pipeline, RAGResult
 from app.services.classification.query_understanding import CATEGORY_DESCRIPTIONS
+from app.services.evaluation.benchmark_service import benchmark_service
+from app.services.ingestion.document_ingestion import ingest_document_file
+from setup_db import ensure_database_initialized
+
+logger = logging.getLogger("uvicorn.error")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await ensure_database_initialized()
+    except Exception as e:
+        logger.error(f"Database auto-initialization error: {e}")
+    yield
 
 app = FastAPI(
     title="ClarifiBids API",
     description="Intelligent Assistance Layer over GePNIC eProcurement Portal",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -20,6 +48,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------
 
 class ChatQueryRequest(BaseModel):
     query_text: str = Field(..., min_length=2, max_length=500)
@@ -36,31 +68,11 @@ class ChatQueryResponse(BaseModel):
     latency_ms: float
     strategy: str = "VECTOR_RAG"
 
-@app.get("/api/v1/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "app_env": settings.APP_ENV,
-        "database": "PostgreSQL 18 + pgvector",
-        "llm_provider": settings.LLM_PROVIDER,
-        "embedding_model": settings.EMBEDDING_MODEL
-    }
-
-from app.core.auth import (
-    hash_password, verify_password, create_access_token, get_current_user_optional
-)
-from app.core.database import AsyncSessionLocal
-from app.models import (
-    User, Role, UserRole, Query, QueryClassification, QueryCategory,
-    RetrievalRun, RetrievedEvidence, EvidenceEvaluation, Response, ResponseEvidence
-)
-from sqlalchemy import select
-
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=5, max_length=100)
     password: str = Field(..., min_length=4)
-    role: str = Field("Bidder", pattern="^(Bidder|Foreign Bidder|Department User)$")
+    role: str = Field("Bidder", pattern="^(Bidder|Foreign Bidder|Department User|ADMIN)$")
 
 class LoginRequest(BaseModel):
     username: str
@@ -71,22 +83,45 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user: Dict[str, Any]
 
+# ---------------------------------------------------------
+# Core Health & Taxonomy Routes
+# ---------------------------------------------------------
+
+@app.get("/api/v1/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "app_env": settings.APP_ENV,
+        "database": "PostgreSQL 18 + pgvector",
+        "llm_provider": settings.LLM_PROVIDER,
+        "embedding_model": settings.EMBEDDING_MODEL
+    }
+
+@app.get("/api/v1/taxonomy/categories")
+def get_categories():
+    return [
+        {"name": name, "description": desc}
+        for name, desc in CATEGORY_DESCRIPTIONS.items()
+    ]
+
+# ---------------------------------------------------------
+# Authentication Routes
+# ---------------------------------------------------------
+
 @app.post("/api/v1/auth/register", response_model=AuthResponse)
 async def register_user(req: RegisterRequest):
     async with AsyncSessionLocal() as session:
-        # Check existing username
         stmt = select(User).where(User.username == req.username)
         res = await session.execute(stmt)
         if res.scalars().first():
             raise HTTPException(status_code=400, detail="Username already registered")
-            
-        # Get role record
+
         role_stmt = select(Role).where(Role.name == req.role)
         role_res = await session.execute(role_stmt)
         role_obj = role_res.scalars().first()
         if not role_obj:
             raise HTTPException(status_code=400, detail=f"Role '{req.role}' not found")
-            
+
         new_user = User(
             username=req.username,
             email=req.email,
@@ -95,11 +130,11 @@ async def register_user(req: RegisterRequest):
         )
         session.add(new_user)
         await session.flush()
-        
+
         user_role = UserRole(user_id=new_user.id, role_id=role_obj.id)
         session.add(user_role)
         await session.commit()
-        
+
         token = create_access_token(new_user.id, new_user.username, req.role)
         return AuthResponse(
             access_token=token,
@@ -114,12 +149,11 @@ async def login_user(req: LoginRequest):
         user = res.scalars().first()
         if not user or not verify_password(req.password, user.password_hash or ""):
             raise HTTPException(status_code=401, detail="Invalid username or password")
-            
-        # Fetch user's assigned role
+
         ur_stmt = select(Role.name).join(UserRole, Role.id == UserRole.role_id).where(UserRole.user_id == user.id)
         ur_res = await session.execute(ur_stmt)
         role_name = ur_res.scalar_one_or_none() or "Bidder"
-        
+
         token = create_access_token(user.id, user.username, role_name)
         return AuthResponse(
             access_token=token,
@@ -132,12 +166,9 @@ async def get_me(user: Optional[Dict[str, Any]] = Depends(get_current_user_optio
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
-@app.get("/api/v1/taxonomy/categories")
-def get_categories():
-    return [
-        {"name": name, "description": desc}
-        for name, desc in CATEGORY_DESCRIPTIONS.items()
-    ]
+# ---------------------------------------------------------
+# Chat & RAG Retrieval
+# ---------------------------------------------------------
 
 @app.post("/api/v1/chat/query", response_model=ChatQueryResponse)
 async def handle_chat_query(req: ChatQueryRequest):
@@ -147,10 +178,9 @@ async def handle_chat_query(req: ChatQueryRequest):
             user_role=req.user_role
         )
 
-        # Asynchronous DB Audit Persistence
+        # Audit persistence (non-blocking failure tolerance)
         try:
             async with AsyncSessionLocal() as session:
-                # 1. Query record
                 db_query = Query(
                     session_id=req.session_id,
                     query_text=rag_res.query,
@@ -159,7 +189,6 @@ async def handle_chat_query(req: ChatQueryRequest):
                 session.add(db_query)
                 await session.flush()
 
-                # 2. Classification record
                 cat_name = rag_res.classification.get("category", "")
                 cat_stmt = select(QueryCategory.id).where(QueryCategory.name == cat_name)
                 cat_res = await session.execute(cat_stmt)
@@ -175,7 +204,6 @@ async def handle_chat_query(req: ChatQueryRequest):
                 )
                 session.add(db_class)
 
-                # 3. Retrieval Run
                 db_run = RetrievalRun(
                     query_id=db_query.id,
                     strategy=rag_res.strategy,
@@ -187,11 +215,9 @@ async def handle_chat_query(req: ChatQueryRequest):
                 session.add(db_run)
                 await session.flush()
 
-                # 4. Retrieved Evidence & Evidence Evaluation
                 for idx, c in enumerate(rag_res.retrieved_chunks, 1):
                     c_id_str = c.get("chunk_id")
                     if c_id_str:
-                        import uuid
                         db_ev = RetrievedEvidence(
                             retrieval_run_id=db_run.id,
                             chunk_id=uuid.UUID(c_id_str),
@@ -211,7 +237,6 @@ async def handle_chat_query(req: ChatQueryRequest):
                 )
                 session.add(db_eval)
 
-                # 5. Response Record
                 db_resp = Response(
                     query_id=db_query.id,
                     retrieval_run_id=db_run.id,
@@ -223,12 +248,9 @@ async def handle_chat_query(req: ChatQueryRequest):
                     latency_ms=rag_res.latency_ms
                 )
                 session.add(db_resp)
-
                 await session.commit()
         except Exception as audit_err:
-            # Audit logging failure should not abort client response
-            import logging
-            logging.error(f"Audit log persistence error: {audit_err}")
+            logger.error(f"Audit log persistence error: {audit_err}")
 
         return ChatQueryResponse(
             query=rag_res.query,
@@ -243,7 +265,93 @@ async def handle_chat_query(req: ChatQueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-from app.services.evaluation.benchmark_service import benchmark_service
+# ---------------------------------------------------------
+# Admin Document Management & Ingestion (RBAC Protected)
+# ---------------------------------------------------------
+
+@app.post("/api/v1/admin/documents/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    source_name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    # Strict RBAC guard: Verifies JWT token has role 'ADMIN'; rejects others with 403 Forbidden
+    current_admin: Dict[str, Any] = Depends(require_admin_user)
+):
+    """
+    Admin-only endpoint for uploading knowledge sources.
+    
+    Workflow:
+    1. Reads the raw binary file bytes (DOCX, PDF, or TXT).
+    2. Chunks the document into logical paragraphs/Q&As.
+    3. Prompts Groq AI with zero-shot classification to tag each chunk with an access role:
+       - 'GENERAL': Accessible to all users
+       - 'Bidder': Domestic Indian bidders
+       - 'Foreign Bidder': International bidders
+       - 'Department User': Internal government tender officials
+    4. Computes 384-dimensional dense semantic embeddings using BAAI/bge-small-en-v1.5.
+    5. Saves document records, chunks, and embeddings into PostgreSQL.
+    """
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+        s_name = source_name or file.filename or "Uploaded Document"
+        s_desc = description or f"Uploaded via admin console: {file.filename}"
+
+        result = await ingest_document_file(
+            file_name=file.filename or "uploaded_doc.txt",
+            file_bytes=content,
+            source_name=s_name,
+            source_description=s_desc
+        )
+        return {
+            "status": "success",
+            "message": f"Successfully ingested and indexed {file.filename}",
+            "data": result
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Ingestion failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+
+@app.get("/api/v1/admin/documents")
+async def list_documents(current_admin: Dict[str, Any] = Depends(require_admin_user)):
+    """Admin-only endpoint to view registered documents and chunk statistics."""
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(
+                Document.id,
+                Document.title,
+                Document.file_name,
+                Document.document_type,
+                Document.status,
+                Document.created_at,
+                func.count(DocumentChunk.id).label("chunk_count")
+            )
+            .outerjoin(DocumentChunk, Document.id == DocumentChunk.document_id)
+            .group_by(Document.id)
+            .order_by(Document.created_at.desc())
+        )
+        res = await session.execute(stmt)
+        docs = [
+            {
+                "id": str(row.id),
+                "title": row.title,
+                "file_name": row.file_name,
+                "document_type": row.document_type,
+                "status": row.status,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "chunk_count": row.chunk_count
+            }
+            for row in res.all()
+        ]
+        return {"documents": docs}
+
+# ---------------------------------------------------------
+# Evaluation Benchmark Routes
+# ---------------------------------------------------------
 
 @app.post("/api/v1/evaluation/run-benchmark")
 async def trigger_benchmark():
@@ -256,14 +364,12 @@ async def trigger_benchmark():
 @app.get("/api/v1/evaluation/results")
 async def get_evaluation_history():
     async with AsyncSessionLocal() as session:
-        from app.models import EvaluationResult, EvaluationQuery
         stmt = select(EvaluationResult, EvaluationQuery).join(
             EvaluationQuery, EvaluationResult.evaluation_query_id == EvaluationQuery.id
         ).order_by(EvaluationResult.created_at.desc()).limit(20)
         res = await session.execute(stmt)
-        history = []
-        for r, q in res.all():
-            history.append({
+        history = [
+            {
                 "query": q.query_text,
                 "depth_level": q.depth_level,
                 "approach": r.approach,
@@ -273,5 +379,7 @@ async def get_evaluation_history():
                 "context_completeness": r.context_completeness,
                 "latency_ms": r.latency_ms,
                 "created_at": r.created_at.isoformat() if r.created_at else None
-            })
+            }
+            for r, q in res.all()
+        ]
         return {"total": len(history), "results": history}

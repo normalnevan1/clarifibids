@@ -132,11 +132,11 @@ class GraphService:
                 item_num = str(meta.get("item_number", ch.chunk_index))
                 chunk_role = meta.get("applicable_role", "Bidder")
 
-                # Role enforcement on graph chunks
-                if user_role == "Bidder" and chunk_role in ["Department User", "Foreign Bidder"]:
+                # Role enforcement on graph chunks: GENERAL accessible to all, role-specific restricted
+                is_general = chunk_role in ["GENERAL", "ALL", "Universal"]
+                if not is_general and chunk_role != user_role:
                     continue
-                if user_role == "Foreign Bidder" and chunk_role == "Department User":
-                    continue
+
 
                 if item_num in chunk_item_numbers:
                     chunk_vec = np.array(emb_list, dtype=np.float32)

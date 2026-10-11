@@ -93,9 +93,3 @@ def parse_faq_docx(file_path: str) -> List[Dict[str, Any]]:
             })
             
     return faq_items
-
-if __name__ == "__main__":
-    items = parse_faq_docx(r"c:\Users\NormalNevan\Desktop\New folder\FAQ.docx")
-    print(f"Parsed {len(items)} FAQ items successfully!")
-    print("Sample Item 1:", items[0]["question"])
-    print("Sample Item 1 Category:", items[0]["category"])
