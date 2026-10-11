@@ -163,10 +163,49 @@ def classify_role_with_groq(text: str, groq_client: Optional[Groq] = None) -> st
     except Exception as e:
         logger.warning(f"Groq classification fallback: {e}")
 
-    # Fallback default
-    if any(k in lower for k in ["bidder", "enrollment", "boq"]):
-        return "Bidder"
-    return "GENERAL"
+def validate_document_domain(sample_text: str, groq_client: Optional[Groq] = None) -> bool:
+    """
+    Validates whether the uploaded document belongs to the domain of e-Procurement,
+    tendering, bidding, portal guidelines, or technical compliance.
+    Rejects completely random/unrelated documents (e.g. cooking recipes, movie scripts, poetry).
+    """
+    # 1. Fast domain keyword check
+    domain_keywords = [
+        "procurement", "tender", "bid", "bidder", "eprocurement", "gepnic",
+        "portal", "dsc", "digital signature", "boq", "emd", "corrigendum",
+        "contract", "vendor", "technical bid", "financial bid", "evaluation",
+        "certifying authority", "token", "pki", "exception site", "java",
+        "department", "nodal", "government", "solicitation", "proposal"
+    ]
+    lower = sample_text.lower()
+    matches = sum(1 for kw in domain_keywords if kw in lower)
+    if matches >= 2:
+        return True
+
+    # 2. If keywords are scarce, check with Groq AI
+    if not settings.GROQ_API_KEY or groq_client is None:
+        return matches >= 1
+
+    try:
+        prompt = (
+            "You are a gatekeeper for an e-Procurement knowledge repository (ClarifiBids / GePNIC). "
+            "Examine this sample excerpt from an uploaded document:\n\n"
+            f"\"\"\"{sample_text[:1200]}\"\"\"\n\n"
+            "Is this document related to procurement, bidding, tendering, public contracts, vendor guidelines, "
+            "portal user instructions, security, or technical assistance for portals?\n"
+            "Answer strictly with either 'ACCEPT' or 'REJECT'."
+        )
+        response = groq_client.chat.completions.create(
+            model=settings.GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=10
+        )
+        decision = (response.choices[0].message.content or "").strip().upper()
+        return "ACCEPT" in decision
+    except Exception as e:
+        logger.warning(f"Domain validation AI fallback: {e}")
+        return matches >= 1
 
 
 async def ingest_document_file(
@@ -176,7 +215,7 @@ async def ingest_document_file(
     source_description: str = "Administrator uploaded reference document."
 ) -> Dict[str, Any]:
     """
-    Ingests, intelligently chunks, classifies roles via Groq AI,
+    Ingests, validates domain relevance, intelligently chunks, classifies roles via Groq AI,
     computes BAAI embeddings, and stores in PostgreSQL.
     """
     checksum = compute_file_checksum(file_bytes)
@@ -185,6 +224,15 @@ async def ingest_document_file(
         raise ValueError("Could not extract any readable text chunks from the uploaded document.")
 
     groq_client = Groq(api_key=settings.GROQ_API_KEY) if settings.GROQ_API_KEY else None
+
+    # Step: Domain Relevance Validation (Reject random / unrelated files)
+    sample_text = " ".join([c["content"] for c in chunks_data[:5]])
+    is_valid_domain = validate_document_domain(sample_text, groq_client)
+    if not is_valid_domain:
+        raise ValueError(
+            "Document rejected: The uploaded file does not appear to be related to e-Procurement, "
+            "tendering, portal guidelines, or bidding. Please upload relevant procurement reference material."
+        )
 
     # Classify each chunk's role intelligently
     classified_chunks = []
